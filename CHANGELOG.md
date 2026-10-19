@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-10-19
+
+### Fixed
+- Lots of orders no longer push the bubble off the screen: past about four orders' height the list scrolls inside the bubble (the header says "scroll for more" and the bottom edge fades). A redraw keeps your scroll place.
+- The kitchen redraws only when a session changes, not every second.
+
 ## 0.3.1 — 2026-10-19
 
 ### Fixed

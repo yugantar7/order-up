@@ -707,6 +707,20 @@ func note(_ title: String, _ body: String, width: CGFloat) -> NSView {
   return v
 }
 
+// A view whose y runs down, so the scrolled rows start at the top.
+final class FlippedView: NSView {
+  override var isFlipped: Bool { true }
+}
+
+// The bottom edge of a scrolling bubble fading out; clicks pass through it.
+final class Fade: NSView {
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  override func draw(_ dirtyRect: NSRect) {
+    let bg = NSColor(srgbRed: 0.11, green: 0.1, blue: 0.1, alpha: 1)
+    NSGradient(starting: bg, ending: bg.withAlphaComponent(0))?.draw(in: bounds, angle: 90)
+  }
+}
+
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let width: CGFloat = 320
   var panel: NSPanel!
@@ -716,6 +730,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   var sessions: [Session] = []
   var seen = Set<String>()
   var snoozed: [Entry] = []
+  // The rows' scroll view while the bubble scrolls, so a redraw keeps your place.
+  weak var scroller: NSScrollView?
+  // What the kitchen last drew, so it redraws only when a session changed.
+  var kitchenDrawn = ""
   // Called out from the menu bar: the chef stays out (with the kitchen when no
   // order waits) until the icon or ✕ sends it back.
   var isSummoned = false
@@ -819,7 +837,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     updateStatus()
     // Stay while there is an order to show, or a kitchen to keep in the menu bar.
-    if isSummoned { layout() }
+    if isSummoned && entries.isEmpty {
+      let now = sessions.map { "\($0.key)\($0.state)\($0.since)\($0.activity ?? "")" }.joined(separator: "|") + "@\(Int(Date().timeIntervalSince1970 / 60))"
+      if now != kitchenDrawn { kitchenDrawn = now; layout() }
+    }
     if entries.isEmpty && snoozed.isEmpty && !isSummoned && !(settings.menubar != false && (settings.stayOpen == true || !sessions.isEmpty)) {
       log("nothing to show, leaving")
       NSApp.terminate(nil)
@@ -1032,12 +1053,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let (headerText, views) = body()
     let header: CGFloat = 26, pad: CGFloat = 8
     let rowsH = views.reduce(CGFloat(0)) { $0 + $1.frame.height }
-    let bubbleH = 10 + pad + header + rowsH + pad
+    // At most about four orders' worth of rows (and never taller than the screen
+    // leaves room for); past that the rows scroll.
+    let screenH = NSScreen.main?.visibleFrame.height ?? 800
+    let maxBody = min(420, max(160, screenH - mascot.frame.height - 10 - pad * 2 - header - 40))
+    let bodyH = min(rowsH, maxBody)
+    let scrolls = rowsH > bodyH
+    let bubbleH = 10 + pad + header + bodyH + pad
     let total = NSSize(width: width, height: bubbleH + mascot.frame.height - 6)
     let root = NSView(frame: NSRect(origin: .zero, size: total))
 
     let bubble = Bubble(frame: NSRect(x: 0, y: mascot.frame.height - 6, width: width, height: bubbleH))
-    let label = NSTextField(labelWithString: headerText)
+    let label = NSTextField(labelWithString: scrolls ? "\(headerText) · scroll for more" : headerText)
     label.font = .systemFont(ofSize: 11, weight: .semibold)
     label.textColor = NSColor.white.withAlphaComponent(0.5)
     label.lineBreakMode = .byTruncatingTail
@@ -1051,11 +1078,37 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
       self?.layout()
     }
     bubble.addSubview(close)
-    var y = bubbleH - pad - header
-    for v in views {
-      y -= v.frame.height
-      v.frame.origin = NSPoint(x: 6, y: y)
-      bubble.addSubview(v)
+    if scrolls {
+      // The rows in a scroll view, top first; a fade at the bottom says there is more.
+      let doc = FlippedView(frame: NSRect(x: 0, y: 0, width: width - 4, height: rowsH))
+      var top: CGFloat = 0
+      for v in views {
+        v.frame.origin = NSPoint(x: 6, y: top)
+        top += v.frame.height
+        doc.addSubview(v)
+      }
+      let scroll = NSScrollView(frame: NSRect(x: 2, y: 10 + pad, width: width - 4, height: bodyH))
+      scroll.drawsBackground = false
+      scroll.hasVerticalScroller = true
+      scroll.autohidesScrollers = true
+      scroll.scrollerStyle = .overlay
+      scroll.documentView = doc
+      // Where you had scrolled to, kept across a redraw.
+      if let before = scroller?.contentView.bounds.origin.y, before > 0 {
+        let y = min(before, max(0, rowsH - bodyH))
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(scroll.contentView)
+      }
+      scroller = scroll
+      bubble.addSubview(scroll)
+      bubble.addSubview(Fade(frame: NSRect(x: 2, y: 10 + pad, width: width - 4, height: 26)))
+    } else {
+      var y = bubbleH - pad - header
+      for v in views {
+        y -= v.frame.height
+        v.frame.origin = NSPoint(x: 6, y: y)
+        bubble.addSubview(v)
+      }
     }
     root.addSubview(bubble)
     mascot.frame.origin = NSPoint(x: width - mascot.frame.width - 14, y: 0)
