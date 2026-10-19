@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-10-19
+
+### Fixed
+- Long answers no longer get cut to a few words. An answer too long for a pill gets a full-width button of its own, its words on up to two lines; short answers stay pills in a row beneath. A long question shows on two lines.
+
 ## 0.3.0 — 2026-10-19
 
 ### Added

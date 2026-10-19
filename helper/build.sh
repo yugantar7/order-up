@@ -18,7 +18,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>OrderUp</string>
   <key>CFBundleExecutable</key><string>OrderUp</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.3.0</string>
+  <key>CFBundleShortVersionString</key><string>0.3.1</string>
   <key>LSUIElement</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>OrderUp brings the terminal tab of a finished Claude Code session to the front when you click its order.</string>
 </dict>

@@ -372,15 +372,30 @@ final class TinyButton: NSView {
   let text: NSAttributedString
   let action: () -> Void
   let isQuiet: Bool
+  // Wide: a full-width answer whose words wrap onto up to two lines, left aligned.
+  let isWide: Bool
   private var hovering = false
 
-  init(_ label: String, quiet: Bool = false, tip: String? = nil, action: @escaping () -> Void) {
+  static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+  static let pillMax: CGFloat = 150
+
+  // The height a wide button needs for `label` at `width`: one line, or two.
+  static func wideHeight(_ label: String, width: CGFloat) -> CGFloat {
+    let r = NSAttributedString(string: label, attributes: [.font: font]).boundingRect(
+      with: NSSize(width: width - 20, height: 400), options: [.usesLineFragmentOrigin])
+    return min(ceil(r.height), 30) + 9
+  }
+
+  init(_ label: String, quiet: Bool = false, wide: CGFloat? = nil, tip: String? = nil, action: @escaping () -> Void) {
     text = NSAttributedString(string: label, attributes: [
-      .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(quiet ? 0.6 : 0.92),
+      .font: TinyButton.font, .foregroundColor: NSColor.white.withAlphaComponent(quiet ? 0.6 : 0.92),
     ])
     self.action = action
     isQuiet = quiet
-    super.init(frame: NSRect(x: 0, y: 0, width: min(text.size().width + 18, 140), height: 22))
+    isWide = wide != nil
+    let size = wide.map { NSSize(width: $0, height: TinyButton.wideHeight(label, width: $0)) }
+      ?? NSSize(width: min(text.size().width + 18, TinyButton.pillMax), height: 22)
+    super.init(frame: NSRect(origin: .zero, size: size))
     toolTip = tip
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -392,7 +407,8 @@ final class TinyButton: NSView {
   override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true; NSCursor.arrow.set() }
 
   override func draw(_ dirtyRect: NSRect) {
-    let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 11, yRadius: 11)
+    let radius: CGFloat = isWide ? 8 : 11
+    let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
     (isQuiet ? NSColor.white.withAlphaComponent(hovering ? 0.16 : 0.0) : claudeOrange.withAlphaComponent(hovering ? 0.55 : 0.3)).setFill()
     shape.fill()
     if !isQuiet {
@@ -401,11 +417,16 @@ final class TinyButton: NSView {
       shape.stroke()
     }
     let para = NSMutableParagraphStyle()
-    para.lineBreakMode = .byTruncatingTail
-    para.alignment = .center
+    para.lineBreakMode = isWide ? .byWordWrapping : .byTruncatingTail
+    para.alignment = isWide ? .left : .center
     let m = NSMutableAttributedString(attributedString: text)
     m.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: m.length))
-    m.draw(in: NSRect(x: 6, y: 3, width: bounds.width - 12, height: 16))
+    if isWide {
+      m.draw(with: NSRect(x: 10, y: 4, width: bounds.width - 20, height: bounds.height - 8),
+             options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+    } else {
+      m.draw(in: NSRect(x: 6, y: 3, width: bounds.width - 12, height: 16))
+    }
   }
 }
 
@@ -422,22 +443,50 @@ final class Row: NSView {
     e.kind == "needs" && e.answerId != nil ? Array((e.options ?? []).prefix(4)) : []
   }
 
-  // The answer buttons laid out in lines that fit the row: [(label, x, line)].
-  static func answerLayout(_ e: Entry, width: CGFloat = 308) -> [(String, CGFloat, Int)] {
-    var out: [(String, CGFloat, Int)] = []
-    var x: CGFloat = 10, line = 0
-    for label in answers(e) {
-      let w = TinyButton(label) {}.frame.width
-      if x + w > width - 14 && x > 10 { x = 10; line += 1 }
-      out.append((label, x, line))
+  // The answer buttons, placed from the bottom of the row up: short answers as pills
+  // that wrap in lines; an answer too long for a pill gets a full-width button of
+  // its own, its words on up to two lines, and the short ones follow as pills.
+  static func answerLayout(_ e: Entry, width: CGFloat = 308) -> (items: [(String, NSRect, Bool)], height: CGFloat) {
+    let labels = answers(e)
+    guard !labels.isEmpty else { return ([], 0) }
+    let fits = { (l: String) in NSAttributedString(string: l, attributes: [.font: TinyButton.font]).size().width + 18 <= TinyButton.pillMax }
+    let wideW = width - 60
+    var rows: [[(String, CGFloat, Bool)]] = []  // per line: (label, width, isWide)
+    var line: [(String, CGFloat, Bool)] = []
+    var x: CGFloat = 10
+    for l in labels.filter({ !fits($0) }) { rows.append([(l, wideW, true)]) }
+    for l in labels.filter(fits) {
+      let w = min(NSAttributedString(string: l, attributes: [.font: TinyButton.font]).size().width + 18, TinyButton.pillMax)
+      if x + w > width - 14 && !line.isEmpty { rows.append(line); line = []; x = 10 }
+      line.append((l, w, false))
       x += w + 6
     }
-    return out
+    if !line.isEmpty { rows.append(line) }
+    // Top to bottom in the order asked; heights from the wrapped text.
+    var items: [(String, NSRect, Bool)] = []
+    var y: CGFloat = 0
+    for row in rows.reversed() {
+      let h = row.contains { $0.2 } ? TinyButton.wideHeight(row[0].0, width: wideW) : 22
+      var cx: CGFloat = 10
+      for (l, w, wide) in row {
+        items.append((l, NSRect(x: cx, y: y, width: w, height: h), wide))
+        cx += w + 6
+      }
+      y += h + 6
+    }
+    return (items, max(0, y - 6))
+  }
+
+  // A question gets two lines; everything else one.
+  static func summaryExtra(_ e: Entry, width: CGFloat = 308) -> CGFloat {
+    guard e.kind == "needs", let text = e.summary else { return 0 }
+    let w = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 11.5)]).size().width
+    return w > width - 44 ? 15 : 0
   }
 
   static func height(_ e: Entry) -> CGFloat {
-    let lines = (answerLayout(e).map { $0.2 }.max() ?? -1) + 1
-    return (e.bill == nil || e.kind == "session" ? 44 : 58) + CGFloat(lines) * 28 + (lines > 0 ? 4 : 0)
+    let buttons = answerLayout(e).height
+    return (e.bill == nil || e.kind == "session" ? 44 : 58) + summaryExtra(e) + (buttons > 0 ? buttons + 10 : 0)
   }
 
   init(entry: Entry, width: CGFloat) {
@@ -445,14 +494,12 @@ final class Row: NSView {
     super.init(frame: NSRect(x: 0, y: 0, width: width, height: Row.height(entry)))
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     // The question's choices: answer it from here, without going to the tab.
-    let placed = Row.answerLayout(entry, width: width)
-    let lines = (placed.map { $0.2 }.max() ?? -1) + 1
-    for (label, x, line) in placed {
-      let b = TinyButton(label, tip: "Answer \"\(label)\" without leaving where you are") { [weak self] in
+    for (label, rect, wide) in Row.answerLayout(entry, width: width).items {
+      let b = TinyButton(label, wide: wide ? rect.width : nil, tip: "Answer \"\(label)\" without leaving where you are") { [weak self] in
         guard let self else { return }
         self.onAnswer?(self.entry, label)
       }
-      b.frame.origin = NSPoint(x: x, y: 6 + CGFloat(lines - 1 - line) * 28)
+      b.frame.origin = NSPoint(x: rect.minX, y: 6 + rect.minY)
       addSubview(b)
     }
     let snooze = TinyButton("⏰", quiet: true, tip: "Snooze 10 minutes") { [weak self] in
@@ -489,13 +536,16 @@ final class Row: NSView {
     NSAttributedString(string: head, attributes: [
       .font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color(hex: entry.color), .paragraphStyle: para,
     ]).draw(in: NSRect(x: 10, y: top - 22, width: bounds.width - 70, height: 18))
+    let extra = Row.summaryExtra(entry, width: bounds.width)
+    let wrap = NSMutableParagraphStyle()
+    wrap.lineBreakMode = .byWordWrapping
     NSAttributedString(string: entry.summary ?? (entry.kind == "burnt" ? "The turn ended with an error" : "Finished"), attributes: [
-      .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.white.withAlphaComponent(0.72), .paragraphStyle: para,
-    ]).draw(in: NSRect(x: 10, y: top - 39, width: bounds.width - 44, height: 16))
+      .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.white.withAlphaComponent(0.72), .paragraphStyle: extra > 0 ? wrap : para,
+    ]).draw(with: NSRect(x: 10, y: top - 39 - extra, width: bounds.width - 44, height: 16 + extra), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     if let bill = entry.bill, entry.kind != "session" {
       NSAttributedString(string: "🧾 \(bill)", attributes: [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: NSColor.white.withAlphaComponent(0.45), .paragraphStyle: para,
-      ]).draw(in: NSRect(x: 10, y: top - 54, width: bounds.width - 44, height: 14))
+      ]).draw(in: NSRect(x: 10, y: top - 54 - extra, width: bounds.width - 44, height: 14))
     }
     let arrow = NSAttributedString(string: "→", attributes: [
       .font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(hovering ? 0.95 : 0.45),
