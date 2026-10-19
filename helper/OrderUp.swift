@@ -198,6 +198,8 @@ final class Chef: NSView {
   private var hovering = false
   private var rattle: CGFloat = 0
   private var blink = false
+  // Nothing cooking and nothing waiting: the chef dozes (eyes shut, z's drifting up).
+  var isSleepy = false
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -262,9 +264,10 @@ final class Chef: NSView {
     for x: CGFloat in [36, 61] { NSBezierPath(ovalIn: NSRect(x: x, y: 63, width: 9, height: 6)).fill() }
     for x: CGFloat in [45, 61] {
       NSColor.white.setFill()
-      let eye = NSRect(x: x - 5, y: blink ? 74 : 70, width: 10, height: blink ? 2 : 11)
+      let shut = blink || isSleepy
+      let eye = NSRect(x: x - 5, y: shut ? 74 : 70, width: 10, height: shut ? 2 : 11)
       NSBezierPath(ovalIn: eye).fill()
-      if !blink {
+      if !shut {
         ink.setFill()
         let look: CGFloat = hovering ? 2 : sin(phase * 0.35) * 1.5
         NSBezierPath(ovalIn: NSRect(x: eye.midX - 3 + look, y: eye.midY - 3, width: 6, height: 7)).fill()
@@ -343,6 +346,14 @@ final class Chef: NSView {
     NSGraphicsContext.current?.restoreGraphicsState()
 
     NSGraphicsContext.current?.restoreGraphicsState()
+    if isSleepy {
+      for k in 0..<3 {
+        let t = (phase * 0.25 + CGFloat(k) * 0.33).truncatingRemainder(dividingBy: 1)
+        NSAttributedString(string: "z", attributes: [
+          .font: NSFont.systemFont(ofSize: 9 + CGFloat(k) * 3, weight: .bold), .foregroundColor: NSColor.white.withAlphaComponent(0.8 * (1 - t)),
+        ]).draw(at: NSPoint(x: 72 + t * 18 + CGFloat(k) * 4, y: 92 + t * 26))
+      }
+    }
   }
 }
 
@@ -381,11 +392,11 @@ final class Row: NSView {
     default: head = "\(dish(for: entry))  \(name) is cooked!"
     }
     let top = bounds.height
-    NSAttributedString(string: head, attributes: [
-      .font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color(hex: entry.color),
-    ]).draw(in: NSRect(x: 10, y: top - 22, width: bounds.width - 44, height: 18))
     let para = NSMutableParagraphStyle()
     para.lineBreakMode = .byTruncatingTail
+    NSAttributedString(string: head, attributes: [
+      .font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color(hex: entry.color), .paragraphStyle: para,
+    ]).draw(in: NSRect(x: 10, y: top - 22, width: bounds.width - 44, height: 18))
     NSAttributedString(string: entry.summary ?? (entry.kind == "burnt" ? "The turn ended with an error" : "Finished"), attributes: [
       .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.white.withAlphaComponent(0.72), .paragraphStyle: para,
     ]).draw(in: NSRect(x: 10, y: top - 39, width: bounds.width - 44, height: 16))
@@ -431,8 +442,131 @@ final class Bubble: NSView {
   }
 }
 
+// How long ago a moment (in ms) was, short: "just now", "4m", "1h 5m", "3d"; empty for no moment.
+func ago(_ ms: Double) -> String {
+  guard ms > 0 else { return "" }
+  let m = max(0, Int((Date().timeIntervalSince1970 - ms / 1000) / 60))
+  if m < 1 { return "just now" }
+  if m < 60 { return "\(m)m" }
+  if m < 1440 { return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m" }
+  return "\(m / 1440)d"
+}
+
+// A state's pill: its words and color.
+func pill(_ s: Session) -> (String, NSColor) {
+  let t = ago(s.since)
+  switch s.state {
+  case "needs": return ("needs you\(t.isEmpty ? "" : " · \(t)")", NSColor(srgbRed: 0.96, green: 0.68, blue: 0.2, alpha: 1))
+  case "cooking": return ("cooking\(t.isEmpty ? "" : " · \(t)")", claudeOrange)
+  case "ready": return (t.isEmpty || t == "just now" ? "ready" : "ready · \(t) ago", NSColor(srgbRed: 0.42, green: 0.78, blue: 0.5, alpha: 1))
+  default: return ("resting", NSColor(white: 0.55, alpha: 1))
+  }
+}
+
+// One session in the kitchen: dish and project on the left, its state as a pill in a
+// fixed column on the right (never cut off), what it is doing underneath.
+final class SessionRow: NSView {
+  let session: Session
+  var onClick: ((Session) -> Void)?
+  private var hovering = false
+  static let height: CGFloat = 46
+
+  init(session: Session, width: CGFloat) {
+    self.session = session
+    super.init(frame: NSRect(x: 0, y: 0, width: width, height: SessionRow.height))
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  required init?(coder: NSCoder) { nil }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  override func mouseDown(with event: NSEvent) { onClick?(session) }
+  override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true; NSCursor.pointingHand.set() }
+  override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true; NSCursor.arrow.set() }
+
+  override func draw(_ dirtyRect: NSRect) {
+    if hovering {
+      NSColor.white.withAlphaComponent(0.08).setFill()
+      NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 1), xRadius: 8, yRadius: 8).fill()
+    }
+    let clip = NSMutableParagraphStyle()
+    clip.lineBreakMode = .byTruncatingTail
+    // The pill, measured first so the name gets the rest of the line.
+    let (words, tint) = pill(session)
+    let pillText = NSAttributedString(string: words, attributes: [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: tint])
+    let pw = pillText.size().width + 14
+    let pillRect = NSRect(x: bounds.width - pw - 8, y: bounds.height - 22, width: pw, height: 17)
+    tint.withAlphaComponent(0.16).setFill()
+    NSBezierPath(roundedRect: pillRect, xRadius: 8.5, yRadius: 8.5).fill()
+    pillText.draw(at: NSPoint(x: pillRect.minX + 7, y: pillRect.minY + 2))
+
+    let name = session.title
+    NSAttributedString(string: "\(session.state == "needs" ? "✋" : session.dish ?? "🍽")  \(name)", attributes: [
+      .font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color(hex: session.color), .paragraphStyle: clip,
+    ]).draw(in: NSRect(x: 10, y: bounds.height - 23, width: pillRect.minX - 16, height: 18))
+    let fallback: String
+    switch session.state {
+    case "cooking": fallback = "working…"
+    case "needs": fallback = "waiting for your answer"
+    case "ready": fallback = "finished, waiting for your next prompt"
+    default: fallback = "waiting for your next prompt"
+    }
+    let line = (session.activity?.isEmpty == false ? session.activity! : fallback)
+    NSAttributedString(string: line, attributes: [
+      .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.white.withAlphaComponent(session.activity?.isEmpty == false ? 0.72 : 0.42), .paragraphStyle: clip,
+    ]).draw(in: NSRect(x: 33, y: 5, width: bounds.width - 33 - 12, height: 16))
+  }
+}
+
+// The resting sessions, folded into one line of small chips; each chip jumps there.
+final class Chip: NSView {
+  let session: Session
+  var onClick: ((Session) -> Void)?
+  private var hovering = false
+  let text: NSAttributedString
+
+  init(session: Session, count: Int = 1) {
+    self.session = session
+    let name = session.title.components(separatedBy: " · ")[0]
+    text = NSAttributedString(string: count > 1 ? "\(name) ×\(count)" : name, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: color(hex: session.color)])
+    super.init(frame: NSRect(x: 0, y: 0, width: text.size().width + 22, height: 20))
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    toolTip = count > 1 ? "\(count) resting sessions in \(name) — click for the most recent" : "\(session.title) — resting \(ago(session.since))"
+  }
+  required init?(coder: NSCoder) { nil }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  override func mouseDown(with event: NSEvent) { onClick?(session) }
+  override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true; NSCursor.pointingHand.set() }
+  override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true; NSCursor.arrow.set() }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+    NSColor.white.withAlphaComponent(hovering ? 0.14 : 0.07).setFill()
+    shape.fill()
+    color(hex: session.color).setFill()
+    NSBezierPath(ovalIn: NSRect(x: 8, y: 7.5, width: 5, height: 5)).fill()
+    text.draw(at: NSPoint(x: 16, y: 3))
+  }
+}
+
+// A quiet line of text in the bubble: the empty states.
+func note(_ title: String, _ body: String, width: CGFloat) -> NSView {
+  let v = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 44))
+  let t = NSTextField(labelWithString: title)
+  t.font = .systemFont(ofSize: 13, weight: .semibold)
+  t.textColor = NSColor.white.withAlphaComponent(0.85)
+  t.frame = NSRect(x: 10, y: 22, width: width - 20, height: 18)
+  let b = NSTextField(wrappingLabelWithString: body)
+  b.font = .systemFont(ofSize: 11.5)
+  b.textColor = NSColor.white.withAlphaComponent(0.55)
+  b.frame = NSRect(x: 10, y: 2, width: width - 20, height: 18)
+  v.addSubview(t)
+  v.addSubview(b)
+  return v
+}
+
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
-  let width: CGFloat = 300
+  let width: CGFloat = 320
   var panel: NSPanel!
   var status: NSStatusItem?
   let mascot = Chef(frame: NSRect(x: 0, y: 0, width: 136, height: 124))
@@ -457,6 +591,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     panel.hasShadow = true
     panel.hidesOnDeactivate = false
     mascot.onClick = { [weak self] in if let last = self?.entries.last { self?.open(last) } }
+    // `open OrderUp.app --args --kitchen` starts with the chef called out.
+    isSummoned = CommandLine.arguments.contains("--kitchen")
 
     Timer.scheduledTimer(withTimeInterval: 1 / 30, repeats: true) { [weak self] _ in self?.mascot.step() }
     Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.poll() }
@@ -551,11 +687,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   func open(_ e: Entry) {
     jump(tty: e.tty, bundleId: e.bundleId)
-    if e.kind == "session" {
-      isSummoned = false
-      layout()
-      return
-    }
     remove(e, "clicked")
     poll()
   }
@@ -637,36 +768,99 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     poll()
   }
 
-  // The rows the bubble shows: the orders, or (called out with none waiting) the kitchen.
-  func shown() -> [Entry] {
-    if !entries.isEmpty || !isSummoned { return entries }
-    let now = Date().timeIntervalSince1970
-    let names = ["cooking": "🍳 cooking", "needs": "✋ needs you", "ready": "✓ ready", "idle": "· idle"]
-    return sessions.reversed().map { s in
-      let mins = max(0, Int((now - s.since / 1000) / 60))
-      return Entry(tty: s.tty, bundleId: s.bundleId, title: s.title, color: s.color, dish: s.dish, summary: s.activity ?? "", bill: "\(names[s.state] ?? s.state) \(mins)m", kind: "session", at: s.since / 1000)
+  // The bubble's body: the orders, else (called out) the kitchen, as views with their heights.
+  func body() -> (header: String, views: [NSView]) {
+    let inner = width - 12
+    if !entries.isEmpty {
+      let waiting = entries.filter { $0.kind == "needs" }.count
+      let header = waiting == entries.count
+        ? (waiting == 1 ? "✋ A session needs you" : "✋ \(waiting) sessions need you")
+        : entries.count == 1 ? "🔔 Order up!" : "🔔 Order up! ×\(entries.count)\(waiting > 0 ? " · ✋\(waiting)" : "")"
+      let rows: [NSView] = entries.reversed().map { e in
+        let row = Row(entry: e, width: inner)
+        row.onClick = { [weak self] in self?.open($0) }
+        return row
+      }
+      return (header, rows)
     }
+    let busy = sessions.filter { $0.state != "idle" }
+    let resting = sessions.filter { $0.state == "idle" }
+    var counts: [String] = []
+    let cooking = busy.filter { $0.state == "cooking" }.count
+    let needs = busy.filter { $0.state == "needs" }.count
+    let ready = busy.filter { $0.state == "ready" }.count
+    if needs > 0 { counts.append("\(needs) needs you") }
+    if cooking > 0 { counts.append("\(cooking) cooking") }
+    if ready > 0 { counts.append("\(ready) ready") }
+    let header = "👨‍🍳 Kitchen" + (counts.isEmpty ? "" : " · " + counts.joined(separator: " · "))
+    var views: [NSView] = []
+    if sessions.isEmpty {
+      views.append(note("Kitchen's quiet", "Start Claude Code in any tab and I'll keep an eye on it.", width: inner))
+      return (header, views)
+    }
+    if busy.isEmpty { views.append(note("All caught up", "Nothing cooking. Your sessions are resting.", width: inner)) }
+    for s in busy {
+      let row = SessionRow(session: s, width: inner)
+      row.onClick = { [weak self] in self?.jumpTo(session: $0) }
+      views.append(row)
+    }
+    if !resting.isEmpty {
+      // "💤 Resting" then chips, wrapping onto more lines as needed.
+      let strip = NSView(frame: NSRect(x: 0, y: 0, width: inner, height: 0))
+      let label = NSAttributedString(string: "💤 Resting", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(0.45)])
+      var placed: [(NSView, CGFloat, CGFloat)] = []
+      var x: CGFloat = 10 + label.size().width + 8, line: CGFloat = 0
+      // One chip per project: its tabs counted, a click going to the most recent.
+      var groups: [(Session, Int)] = []
+      for s in resting.sorted(by: { $0.since > $1.since }) {
+        let name = s.title.components(separatedBy: " · ")[0]
+        if let i = groups.firstIndex(where: { $0.0.title.components(separatedBy: " · ")[0] == name }) { groups[i].1 += 1 } else { groups.append((s, 1)) }
+      }
+      for (s, n) in groups {
+        let chip = Chip(session: s, count: n)
+        chip.onClick = { [weak self] in self?.jumpTo(session: $0) }
+        if x + chip.frame.width > inner - 8 { x = 10; line += 1 }
+        placed.append((chip, x, line))
+        x += chip.frame.width + 6
+      }
+      let h = (line + 1) * 26 + 8
+      strip.frame.size.height = h
+      let tag = NSTextField(labelWithAttributedString: label)
+      tag.frame = NSRect(x: 10, y: h - 25, width: label.size().width + 4, height: 16)
+      strip.addSubview(tag)
+      for (chip, cx, l) in placed {
+        chip.frame.origin = NSPoint(x: cx, y: h - 27 - l * 26)
+        strip.addSubview(chip)
+      }
+      views.append(strip)
+    }
+    return (header, views)
+  }
+
+  func jumpTo(session s: Session) {
+    jump(tty: s.tty, bundleId: s.bundleId)
+    isSummoned = false
+    layout()
   }
 
   func layout() {
-    let rows = shown()
-    guard !rows.isEmpty || isSummoned else {
+    guard !entries.isEmpty || isSummoned else {
       panel.orderOut(nil)
       return
     }
+    mascot.isSleepy = entries.isEmpty && !sessions.contains { $0.state == "cooking" || $0.state == "needs" }
+    let (headerText, views) = body()
     let header: CGFloat = 26, pad: CGFloat = 8
-    let rowsH = rows.isEmpty ? 44 : rows.reduce(CGFloat(0)) { $0 + Row.height($1) }
+    let rowsH = views.reduce(CGFloat(0)) { $0 + $1.frame.height }
     let bubbleH = 10 + pad + header + rowsH + pad
     let total = NSSize(width: width, height: bubbleH + mascot.frame.height - 6)
     let root = NSView(frame: NSRect(origin: .zero, size: total))
 
     let bubble = Bubble(frame: NSRect(x: 0, y: mascot.frame.height - 6, width: width, height: bubbleH))
-    let waiting = entries.filter { $0.kind == "needs" }.count
-    let label = NSTextField(labelWithString: entries.isEmpty ? "👨‍🍳 Kitchen" : waiting == entries.count
-      ? (waiting == 1 ? "✋ A session needs you" : "✋ \(waiting) sessions need you")
-      : entries.count == 1 ? "🔔 Order up!" : "🔔 Order up! ×\(entries.count)\(waiting > 0 ? " · ✋\(waiting)" : "")")
+    let label = NSTextField(labelWithString: headerText)
     label.font = .systemFont(ofSize: 11, weight: .semibold)
     label.textColor = NSColor.white.withAlphaComponent(0.5)
+    label.lineBreakMode = .byTruncatingTail
     label.frame = NSRect(x: 12, y: bubbleH - pad - 20, width: width - 50, height: 16)
     bubble.addSubview(label)
     let close = CloseButton(frame: NSRect(x: width - 30, y: bubbleH - pad - 22, width: 22, height: 20))
@@ -678,19 +872,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     bubble.addSubview(close)
     var y = bubbleH - pad - header
-    if rows.isEmpty {
-      let none = NSTextField(labelWithString: "Nothing cooking. Start Claude Code in a tab and I'll keep watch.")
-      none.font = .systemFont(ofSize: 11.5)
-      none.textColor = NSColor.white.withAlphaComponent(0.6)
-      none.frame = NSRect(x: 16, y: y - 32, width: width - 32, height: 18)
-      bubble.addSubview(none)
-    }
-    for e in rows.reversed() {
-      let row = Row(entry: e, width: width - 12)
-      y -= Row.height(e)
-      row.frame.origin = NSPoint(x: 6, y: y)
-      row.onClick = { [weak self] in self?.open($0) }
-      bubble.addSubview(row)
+    for v in views {
+      y -= v.frame.height
+      v.frame.origin = NSPoint(x: 6, y: y)
+      bubble.addSubview(v)
     }
     root.addSubview(bubble)
     mascot.frame.origin = NSPoint(x: width - mascot.frame.width - 14, y: 0)

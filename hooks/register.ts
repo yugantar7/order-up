@@ -347,6 +347,8 @@ export const register: Register = (on, opts) => {
         await startAtLogin($, settings.stayOpen && settings.menubar)
       }
       void finishPending($).catch(() => {})
+      // When this session's state began: now, not 1970.
+      stateSince = await $.clock.now()
       if (isOn) {
         await heartbeat($, 'idle')
         if (settings.menubar) await wake($)
