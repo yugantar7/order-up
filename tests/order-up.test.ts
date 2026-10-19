@@ -100,17 +100,17 @@ test('a question waiting on you serves a "needs you" order', async ($, on) => {
 })
 
 test('/order-up setup asks its questions, builds the app, serves a test order and saves the answers as options', async ($, on) => {
-  const w = world(on, { answers: { When: 'Turns over 2 min', Summary: 'Nothing, just the project', Corner: 'Top right', Sound: 'No sound' } })
+  const w = world(on, { answers: { Character: 'Barista', When: 'Turns over 2 min', Summary: 'Nothing, just the project', Corner: 'Top right', Sound: 'No sound' } })
   await $.session.start(START)
   const r = await $.command.run({ command: 'order-up', args: 'setup', origin: ORIGIN, presentation: PRESENTATION })
   await w.clock.advance(0)
-  expect(w.asked).toHaveLength(7)
+  expect(w.asked).toHaveLength(8)
   expect(JSON.parse(w.writes.get('/Users/me/.claude/order-up/settings.json') ?? '{}')).toMatchObject({ afterSec: 120, summary: 'off', corner: 'top-right', sound: false })
   expect(w.runs.some(r => (r[2] ?? '').includes('build.sh'))).toBe(true)
   expect(w.order()).toMatchObject({ isTest: true, kind: 'done' })
   expect(r.text).toContain('order-up is set up')
   expect(r.text).toContain('allow it')
-  expect(w.sets).toMatchObject({ 'order-up.after': '2 min', 'order-up.summary': 'nothing', 'order-up.corner': 'top right', 'order-up.sound': false })
+  expect(w.sets).toMatchObject({ 'order-up.skin': 'barista', 'order-up.after': '2 min', 'order-up.summary': 'nothing', 'order-up.corner': 'top right', 'order-up.sound': false })
   // Answers equal to what is set already are not written again.
   expect(w.sets['order-up.alwaysOn']).toBeUndefined()
 })
@@ -124,6 +124,8 @@ test('/order-up set changes one option in plain words; config lists them', async
   expect((await run('set always on')).text).toBe('Set alwaysOn to on.')
   expect(w.sets).toMatchObject({ 'order-up.corner': 'top right', 'order-up.sound': false, 'order-up.alwaysOn': true })
   expect((await run('set corner middle')).text).toContain('bottom right | bottom left | top right')
+  expect((await run('set skin robot')).text).toBe('Set skin to robot.')
+  expect(w.sets['order-up.skin']).toBe('robot')
   expect((await run('config')).text).toContain('corner')
 })
 

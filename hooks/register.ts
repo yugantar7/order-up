@@ -16,11 +16,13 @@ type Settings = {
   menubar: boolean
   // Keep the menu bar chef when no Claude session runs, and start it at login.
   stayOpen: boolean
+  // Who serves the orders: chef, barista, sushi or robot.
+  skin: string
   // Optional per-project look, by project name: { "my-app": { "color": "#5B9BFF", "dish": "🍜" } }
   projects?: Record<string, { color?: string; dish?: string }>
 }
 
-const DEFAULTS: Settings = { afterSec: 30, summary: 'prompt', needs: true, corner: 'bottom-right', sound: true, menubar: true, stayOpen: false }
+const DEFAULTS: Settings = { afterSec: 30, summary: 'prompt', needs: true, corner: 'bottom-right', sound: true, menubar: true, stayOpen: false, skin: 'chef' }
 const LOGIN_AGENT = 'Library/LaunchAgents/dev.order-up.chef.plist'
 const STORE_ON = 'enabled'
 const STORE_TOLD = 'toldAboutSetup'
@@ -30,6 +32,7 @@ const STORE_PENDING = 'pendingOptions'
 // The options the manifest declares (`userConfig`): set on install, in /config, by
 // /order-up setup, or /order-up set. Each field, the values it takes, and its meaning.
 const FIELDS: Record<string, { values: readonly (string | boolean)[]; label: string }> = {
+  skin: { values: ['chef', 'barista', 'sushi', 'robot'], label: 'who serves your orders' },
   after: { values: ['every turn', '30s', '1 min', '2 min', '5 min'], label: 'pop up after a turn of' },
   summary: { values: ['your prompt', 'haiku summary', 'nothing'], label: 'each order says' },
   needsYou: { values: [true, false], label: 'pop up when a session needs you' },
@@ -50,18 +53,18 @@ function fromOptions(o: PluginOptions): Settings {
     sound: pick(o.sound, DEFAULTS.sound),
     menubar: pick(o.menubar, DEFAULTS.menubar),
     stayOpen: pick(o.alwaysOn, DEFAULTS.stayOpen),
+    skin: ['chef', 'barista', 'sushi', 'robot'].includes(String(o.skin)) ? String(o.skin) : 'chef',
   }
 }
 
 const PALETTE = ['#5B9BFF', '#FF5C6C', '#C77DFF', '#A3C94A', '#E8B84B', '#4FD1C5', '#F687B3', '#F6AD55', '#9AE6B4', '#90CDF4']
-const DISHES = ['🍜', '🍕', '🍣', '🥗', '🍰', '🌮', '🥘', '🍔', '🥞', '🍝', '🍤', '🧁']
 
 // Walks up to the login process, whose tty is the tab's (Terminal.app and iTerm2
 // both start one per tab; a wrapper such as tmux gets its own pty, so this finds the tab's).
 const FIND_TTY =
   'p=$$; while [ "$p" -gt 1 ]; do case "$(ps -o comm= -p "$p")" in *login) ps -o tty= -p "$p"; exit;; esac; p=$(ps -o ppid= -p "$p" | tr -d " "); done; ps -o tty= -p $PPID'
 
-type Session = { key: string; tty?: string; bundleId?: string; app: string; title: string; color: string; dish: string }
+type Session = { key: string; tty?: string; bundleId?: string; app: string; title: string; color: string; dish?: string }
 
 let isOn = true
 let settings: Settings = DEFAULTS
@@ -175,7 +178,7 @@ async function identify($: EngineInterface): Promise<void> {
     app: term,
     title,
     color: look.color ?? PALETTE[hash(name) % PALETTE.length],
-    dish: look.dish ?? DISHES[hash(name) % DISHES.length],
+    dish: look.dish,
   }
 }
 
@@ -275,7 +278,9 @@ async function setup($: EngineInterface): Promise<string> {
   const ask = (q: string, choices: string[], header: string) => $.ui.ask(q, { options: choices, header })
   const want: Record<string, string | boolean> = {}
 
-  const when = await ask('When should the chef pop up?', ['Turns over 30s (Recommended)', 'Turns over 2 min', 'Every finished turn'], 'When')
+  const who = await ask('Who should serve your orders?', ['Chef (Recommended)', 'Barista', 'Sushi chef', 'Robot'], 'Character')
+  want.skin = who.startsWith('Barista') ? 'barista' : who.startsWith('Sushi') ? 'sushi' : who.startsWith('Robot') ? 'robot' : 'chef'
+  const when = await ask('When should it pop up?', ['Turns over 30s (Recommended)', 'Turns over 2 min', 'Every finished turn'], 'When')
   want.after = when.startsWith('Every') ? 'every turn' : when.includes('2 min') ? '2 min' : '30s'
   const what = await ask('What should each order say?', ['Your prompt, shortened (free)', 'A Haiku summary (~$0.001/turn)', 'Nothing, just the project'], 'Summary')
   want.summary = what.startsWith('A Haiku') ? 'haiku summary' : what.startsWith('Nothing') ? 'nothing' : 'your prompt'
@@ -342,6 +347,7 @@ function settingsToOptions(x: Settings): Record<string, string | boolean> {
     sound: x.sound,
     menubar: x.menubar,
     alwaysOn: x.stayOpen,
+    skin: x.skin,
   }
 }
 

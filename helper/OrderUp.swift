@@ -61,6 +61,7 @@ struct Settings: Codable {
   var menubar: Bool? = nil
   // Keep the menu bar chef even when no Claude session runs (it also starts at login).
   var stayOpen: Bool? = nil
+  var skin: String? = nil
 }
 
 func loadSettings() -> Settings {
@@ -181,14 +182,60 @@ func chefIcon() -> NSImage {
   return img
 }
 
-let DISHES = ["🍜", "🍕", "🍣", "🥗", "🍰", "🌮", "🥘", "🍔", "🥞", "🍝", "🍤", "🧁"]
-
-func dish(for e: Entry) -> String {
-  if let d = e.dish, !d.isEmpty { return d }
-  let root = e.title.components(separatedBy: " · ")[0]
-  let h = root.unicodeScalars.reduce(UInt32(7)) { ($0 &* 31) &+ $1.value }
-  return DISHES[Int(h % UInt32(DISHES.count))]
+// A skin: the character, its words and its dishes. Chosen in setup ("skin").
+struct Skin {
+  let id: String
+  let header: String      // the bubble's title for finished orders
+  let kitchen: String     // the bubble's title for the kitchen
+  let done: String        // "<project> is cooked!"
+  let burnt: String       // "<project> got burnt"
+  let resting: String     // the resting chips' label
+  let icon: String        // menu bar icon (chef draws its own)
+  let dishes: [String]
 }
+
+let SKINS: [String: Skin] = [
+  "chef": Skin(id: "chef", header: "🔔 Order up!", kitchen: "👨‍🍳 Kitchen", done: "is cooked!", burnt: "got burnt", resting: "💤 Resting", icon: "👨‍🍳",
+               dishes: ["🍜", "🍕", "🍣", "🥗", "🍰", "🌮", "🥘", "🍔", "🥞", "🍝", "🍤", "🧁"]),
+  "barista": Skin(id: "barista", header: "☕ Coffee's up!", kitchen: "☕ Café", done: "is brewed!", burnt: "spilled", resting: "💤 On a break", icon: "☕",
+                  dishes: ["☕", "🍵", "🧋", "🥤", "🧁", "🍩", "🥐", "🍪"]),
+  "sushi": Skin(id: "sushi", header: "🍣 Irasshaimase!", kitchen: "🍣 Sushi bar", done: "is plated!", burnt: "fell off the belt", resting: "💤 Resting", icon: "🍣",
+                dishes: ["🍣", "🍱", "🍙", "🍤", "🥟", "🍜", "🍡", "🍥"]),
+  "robot": Skin(id: "robot", header: "🤖 Task complete", kitchen: "🤖 Control room", done: "is done.", burnt: "hit an error", resting: "💤 Idle", icon: "🤖",
+                dishes: ["📦", "💾", "🧩", "⚙️", "🔋", "📡", "🛰️", "💡"]),
+]
+
+var skin: Skin = SKINS["chef"]!
+
+func useSkin(_ id: String?) -> Bool {
+  let next = SKINS[id ?? "chef"] ?? SKINS["chef"]!
+  if next.id == skin.id { return false }
+  skin = next
+  return true
+}
+
+// An emoji drawn as a menu bar image.
+func emojiIcon(_ text: String) -> NSImage {
+  let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+    NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 14)]).draw(at: NSPoint(x: 0.5, y: 0))
+    return true
+  }
+  img.isTemplate = false
+  return img
+}
+
+func skinIcon() -> NSImage { skin.id == "chef" ? chefIcon() : emojiIcon(skin.icon) }
+
+// A project's dish: its own (settings.json "projects"), else one from the skin's menu
+// picked by its name, so it stays the same.
+func dish(title: String, own: String?) -> String {
+  if let own, !own.isEmpty { return own }
+  let root = title.components(separatedBy: " · ")[0]
+  let h = root.unicodeScalars.reduce(UInt32(7)) { ($0 &* 31) &+ $1.value }
+  return skin.dishes[Int(h % UInt32(skin.dishes.count))]
+}
+
+func dish(for e: Entry) -> String { dish(title: e.title, own: e.dish) }
 
 // The chef: Claude's orange face under a tall toque, a curly mustache, a silver
 // cloche held out on a plate. It hops in and pops the lid on arrival, lifts it
@@ -243,6 +290,9 @@ final class Chef: NSView {
     let lift = hopping ? abs(sin(phase * 1.6)) * 16 : (sin(phase * 0.5) + 1) * 2
     let ink = NSColor(srgbRed: 0.29, green: 0.17, blue: 0.1, alpha: 1)
     let line = NSColor(white: 0.78, alpha: 1)
+    let robot = skin.id == "robot"
+    let steel = NSColor(srgbRed: 0.62, green: 0.66, blue: 0.72, alpha: 1)
+    let steelDark = NSColor(srgbRed: 0.38, green: 0.42, blue: 0.48, alpha: 1)
 
     NSColor.black.withAlphaComponent(0.2).setFill()
     let shadowW = 70 * (1 - lift / 60)
@@ -251,107 +301,215 @@ final class Chef: NSView {
     NSGraphicsContext.current?.saveGraphicsState()
     let hop = NSAffineTransform(); hop.translateX(by: 0, yBy: lift); hop.concat()
 
-    // legs and jacket
-    ink.setFill()
-    for x: CGFloat in [40, 56] { NSBezierPath(roundedRect: NSRect(x: x, y: 6, width: 10, height: 12), xRadius: 4, yRadius: 4).fill() }
-    let jacket = NSBezierPath(roundedRect: NSRect(x: 28, y: 14, width: 50, height: 44), xRadius: 18, yRadius: 18)
-    NSColor.white.setFill(); jacket.fill()
-    line.setStroke(); jacket.lineWidth = 1.5; jacket.stroke()
-    NSColor(white: 0.6, alpha: 1).setFill()
-    for y: CGFloat in [26, 38] { NSBezierPath(ovalIn: NSRect(x: 50, y: y, width: 5, height: 5)).fill() }
-    // neckerchief
-    claudeOrange.blended(withFraction: 0.35, of: .red)?.setFill()
-    let scarf = NSBezierPath()
-    scarf.move(to: NSPoint(x: 42, y: 56)); scarf.line(to: NSPoint(x: 64, y: 56)); scarf.line(to: NSPoint(x: 53, y: 46)); scarf.close()
-    scarf.fill()
+    // legs
+    (robot ? steelDark : ink).setFill()
+    for x: CGFloat in [40, 56] { NSBezierPath(roundedRect: NSRect(x: x, y: 6, width: 10, height: 12), xRadius: robot ? 2 : 4, yRadius: robot ? 2 : 4).fill() }
 
-    // head
-    claudeOrange.setFill()
-    NSBezierPath(ovalIn: NSRect(x: 33, y: 52, width: 40, height: 38)).fill()
-    NSColor(srgbRed: 1, green: 0.55, blue: 0.55, alpha: 0.55).setFill()
-    for x: CGFloat in [36, 61] { NSBezierPath(ovalIn: NSRect(x: x, y: 63, width: 9, height: 6)).fill() }
-    for x: CGFloat in [45, 61] {
-      NSColor.white.setFill()
-      let shut = blink || isSleepy
-      let eye = NSRect(x: x - 5, y: shut ? 74 : 70, width: 10, height: shut ? 2 : 11)
-      NSBezierPath(ovalIn: eye).fill()
-      if !shut {
-        ink.setFill()
-        let look: CGFloat = hovering ? 2 : sin(phase * 0.35) * 1.5
-        NSBezierPath(ovalIn: NSRect(x: eye.midX - 3 + look, y: eye.midY - 3, width: 6, height: 7)).fill()
+    // body
+    let torso = NSRect(x: 28, y: 14, width: 50, height: 44)
+    switch skin.id {
+    case "barista":
+      let shirt = NSBezierPath(roundedRect: torso, xRadius: 18, yRadius: 18)
+      NSColor(srgbRed: 0.2, green: 0.2, blue: 0.22, alpha: 1).setFill(); shirt.fill()
+      // the green apron and its pocket
+      let apron = NSBezierPath(roundedRect: NSRect(x: 34, y: 15, width: 38, height: 34), xRadius: 8, yRadius: 8)
+      NSColor(srgbRed: 0.16, green: 0.48, blue: 0.33, alpha: 1).setFill(); apron.fill()
+      NSColor(srgbRed: 0.12, green: 0.38, blue: 0.26, alpha: 1).setFill()
+      NSBezierPath(roundedRect: NSRect(x: 45, y: 24, width: 16, height: 9), xRadius: 2, yRadius: 2).fill()
+    case "sushi":
+      let jacket = NSBezierPath(roundedRect: torso, xRadius: 18, yRadius: 18)
+      NSColor.white.setFill(); jacket.fill()
+      line.setStroke(); jacket.lineWidth = 1.5; jacket.stroke()
+      // the dark crossed collar of a happi coat
+      let collar = NSBezierPath()
+      collar.move(to: NSPoint(x: 40, y: 56)); collar.line(to: NSPoint(x: 57, y: 30))
+      collar.move(to: NSPoint(x: 66, y: 56)); collar.line(to: NSPoint(x: 52, y: 36))
+      NSColor(srgbRed: 0.15, green: 0.2, blue: 0.4, alpha: 1).setStroke(); collar.lineWidth = 5; collar.lineCapStyle = .round; collar.stroke()
+    case "robot":
+      let shell = NSBezierPath(roundedRect: torso, xRadius: 8, yRadius: 8)
+      NSGradient(starting: steel, ending: steelDark)?.draw(in: shell, angle: -90)
+      // the chest panel, its lights blinking
+      NSColor(srgbRed: 0.12, green: 0.14, blue: 0.17, alpha: 1).setFill()
+      NSBezierPath(roundedRect: NSRect(x: 38, y: 24, width: 30, height: 18), xRadius: 3, yRadius: 3).fill()
+      for (i, c) in [NSColor.systemGreen, NSColor.systemYellow, isBurnt ? NSColor.systemRed : NSColor.systemBlue].enumerated() {
+        let on = Int(phase * 2 + CGFloat(i) * 3) % 4 != 0
+        c.withAlphaComponent(on ? 1 : 0.25).setFill()
+        NSBezierPath(ovalIn: NSRect(x: 42 + CGFloat(i) * 8, y: 30, width: 5, height: 5)).fill()
       }
+    default:
+      let jacket = NSBezierPath(roundedRect: torso, xRadius: 18, yRadius: 18)
+      NSColor.white.setFill(); jacket.fill()
+      line.setStroke(); jacket.lineWidth = 1.5; jacket.stroke()
+      NSColor(white: 0.6, alpha: 1).setFill()
+      for y: CGFloat in [26, 38] { NSBezierPath(ovalIn: NSRect(x: 50, y: y, width: 5, height: 5)).fill() }
+      claudeOrange.blended(withFraction: 0.35, of: .red)?.setFill()
+      let scarf = NSBezierPath()
+      scarf.move(to: NSPoint(x: 42, y: 56)); scarf.line(to: NSPoint(x: 64, y: 56)); scarf.line(to: NSPoint(x: 53, y: 46)); scarf.close()
+      scarf.fill()
     }
-    // the mustache, curling up, wiggling now and then
-    let wiggle = sin(phase * 0.9) > 0.92 ? sin(phase * 6) * 2 : 0
-    let stache = NSBezierPath()
-    for side: CGFloat in [-1, 1] {
-      stache.move(to: NSPoint(x: 53, y: 64))
-      stache.curve(to: NSPoint(x: 53 + side * 15, y: 66 + wiggle),
-                   controlPoint1: NSPoint(x: 53 + side * 5, y: 58),
-                   controlPoint2: NSPoint(x: 53 + side * 13, y: 58))
-      stache.curve(to: NSPoint(x: 53 + side * 10, y: 66 + wiggle),
-                   controlPoint1: NSPoint(x: 53 + side * 17, y: 70 + wiggle),
-                   controlPoint2: NSPoint(x: 53 + side * 12, y: 70 + wiggle))
-    }
-    ink.setStroke(); stache.lineWidth = 3.5; stache.lineCapStyle = .round; stache.stroke()
-    let smile = NSBezierPath()
-    let mouthY: CGFloat = isBurnt ? 54 : 58, bend: CGFloat = isBurnt ? 4 : -4
-    smile.move(to: NSPoint(x: 48, y: mouthY)); smile.curve(to: NSPoint(x: 58, y: mouthY), controlPoint1: NSPoint(x: 50, y: mouthY + bend), controlPoint2: NSPoint(x: 56, y: mouthY + bend))
-    smile.lineWidth = 1.8; smile.stroke()
 
-    // the toque
-    NSColor.white.setFill(); line.setStroke()
-    for (x, y, r) in [(41.0, 100.0, 10.0), (65.0, 100.0, 10.0), (53.0, 106.0, 13.0)] as [(CGFloat, CGFloat, CGFloat)] {
-      let puff = NSBezierPath(ovalIn: NSRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
-      puff.fill(); puff.lineWidth = 1.2; puff.stroke()
+    // head and face
+    let shut = blink || isSleepy
+    if robot {
+      let headBox = NSBezierPath(roundedRect: NSRect(x: 33, y: 54, width: 40, height: 34), xRadius: 7, yRadius: 7)
+      NSGradient(starting: steel, ending: steelDark)?.draw(in: headBox, angle: -90)
+      NSColor(srgbRed: 0.1, green: 0.12, blue: 0.15, alpha: 1).setFill()
+      NSBezierPath(roundedRect: NSRect(x: 37, y: 60, width: 32, height: 22), xRadius: 5, yRadius: 5).fill()
+      let led = isBurnt ? NSColor.systemRed : NSColor(srgbRed: 0.35, green: 0.85, blue: 1, alpha: 1)
+      led.setFill()
+      for x: CGFloat in [42, 57] {
+        NSBezierPath(roundedRect: NSRect(x: x, y: shut ? 71 : 68, width: 8, height: shut ? 2 : 8), xRadius: 2, yRadius: 2).fill()
+      }
+      // the mouth: a little bar, a wave when burnt
+      let mouth = NSBezierPath()
+      mouth.move(to: NSPoint(x: 47, y: 64))
+      if isBurnt {
+        for k in 1...4 { mouth.line(to: NSPoint(x: 47 + CGFloat(k) * 3, y: 64 + (k % 2 == 0 ? 0 : 2))) }
+      } else {
+        mouth.line(to: NSPoint(x: 59, y: 64))
+      }
+      led.withAlphaComponent(0.8).setStroke(); mouth.lineWidth = 1.6; mouth.stroke()
+      // the antenna, its light blinking
+      steelDark.setStroke()
+      let stalk = NSBezierPath(); stalk.move(to: NSPoint(x: 53, y: 88)); stalk.line(to: NSPoint(x: 53, y: 100)); stalk.lineWidth = 2.5; stalk.stroke()
+      let glow = (sin(phase * 1.2) + 1) / 2
+      (isBurnt ? NSColor.systemRed : NSColor.systemOrange).withAlphaComponent(0.4 + 0.6 * glow).setFill()
+      NSBezierPath(ovalIn: NSRect(x: 48, y: 98, width: 10, height: 10)).fill()
+    } else {
+      claudeOrange.setFill()
+      NSBezierPath(ovalIn: NSRect(x: 33, y: 52, width: 40, height: 38)).fill()
+      NSColor(srgbRed: 1, green: 0.55, blue: 0.55, alpha: 0.55).setFill()
+      for x: CGFloat in [36, 61] { NSBezierPath(ovalIn: NSRect(x: x, y: 63, width: 9, height: 6)).fill() }
+      for x: CGFloat in [45, 61] {
+        NSColor.white.setFill()
+        let eye = NSRect(x: x - 5, y: shut ? 74 : 70, width: 10, height: shut ? 2 : 11)
+        NSBezierPath(ovalIn: eye).fill()
+        if !shut {
+          ink.setFill()
+          let look: CGFloat = hovering ? 2 : sin(phase * 0.35) * 1.5
+          NSBezierPath(ovalIn: NSRect(x: eye.midX - 3 + look, y: eye.midY - 3, width: 6, height: 7)).fill()
+        }
+      }
+      if skin.id == "chef" {
+        // the mustache, curling up, wiggling now and then
+        let wiggle = sin(phase * 0.9) > 0.92 ? sin(phase * 6) * 2 : 0
+        let stache = NSBezierPath()
+        for side: CGFloat in [-1, 1] {
+          stache.move(to: NSPoint(x: 53, y: 64))
+          stache.curve(to: NSPoint(x: 53 + side * 15, y: 66 + wiggle),
+                       controlPoint1: NSPoint(x: 53 + side * 5, y: 58),
+                       controlPoint2: NSPoint(x: 53 + side * 13, y: 58))
+          stache.curve(to: NSPoint(x: 53 + side * 10, y: 66 + wiggle),
+                       controlPoint1: NSPoint(x: 53 + side * 17, y: 70 + wiggle),
+                       controlPoint2: NSPoint(x: 53 + side * 12, y: 70 + wiggle))
+        }
+        ink.setStroke(); stache.lineWidth = 3.5; stache.lineCapStyle = .round; stache.stroke()
+      }
+      let smile = NSBezierPath()
+      let mouthY: CGFloat = isBurnt ? 56 : 60, bend: CGFloat = isBurnt ? 4 : -4
+      smile.move(to: NSPoint(x: 48, y: mouthY)); smile.curve(to: NSPoint(x: 58, y: mouthY), controlPoint1: NSPoint(x: 50, y: mouthY + bend), controlPoint2: NSPoint(x: 56, y: mouthY + bend))
+      ink.setStroke(); smile.lineWidth = 1.8; smile.stroke()
     }
-    let band = NSBezierPath(roundedRect: NSRect(x: 36, y: 84, width: 34, height: 14), xRadius: 3, yRadius: 3)
-    band.fill(); band.lineWidth = 1.2; band.stroke()
 
-    // arm out to the plate
+    // headwear
+    switch skin.id {
+    case "barista":
+      // a dark cap with a short brim
+      let cap = NSBezierPath()
+      cap.move(to: NSPoint(x: 33, y: 80)); cap.curve(to: NSPoint(x: 73, y: 80), controlPoint1: NSPoint(x: 35, y: 102), controlPoint2: NSPoint(x: 71, y: 102))
+      cap.close()
+      NSColor(srgbRed: 0.16, green: 0.48, blue: 0.33, alpha: 1).setFill(); cap.fill()
+      NSColor(srgbRed: 0.12, green: 0.38, blue: 0.26, alpha: 1).setFill()
+      NSBezierPath(roundedRect: NSRect(x: 58, y: 77, width: 24, height: 5), xRadius: 2.5, yRadius: 2.5).fill()
+    case "sushi":
+      // a white headband with a red sun, tails flying
+      NSColor.white.setFill()
+      NSBezierPath(roundedRect: NSRect(x: 32, y: 78, width: 42, height: 8), xRadius: 3, yRadius: 3).fill()
+      NSColor(srgbRed: 0.86, green: 0.16, blue: 0.2, alpha: 1).setFill()
+      NSBezierPath(ovalIn: NSRect(x: 49, y: 79, width: 7, height: 6)).fill()
+      let tail = NSBezierPath()
+      tail.move(to: NSPoint(x: 33, y: 82)); tail.line(to: NSPoint(x: 24, y: 88 + sin(phase * 2) * 2)); tail.move(to: NSPoint(x: 33, y: 81)); tail.line(to: NSPoint(x: 25, y: 79 + sin(phase * 2 + 1) * 2))
+      NSColor.white.setStroke(); tail.lineWidth = 3; tail.lineCapStyle = .round; tail.stroke()
+    case "robot":
+      break
+    default:
+      NSColor.white.setFill(); line.setStroke()
+      for (x, y, r) in [(41.0, 100.0, 10.0), (65.0, 100.0, 10.0), (53.0, 106.0, 13.0)] as [(CGFloat, CGFloat, CGFloat)] {
+        let puff = NSBezierPath(ovalIn: NSRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
+        puff.fill(); puff.lineWidth = 1.2; puff.stroke()
+      }
+      let band = NSBezierPath(roundedRect: NSRect(x: 36, y: 84, width: 34, height: 14), xRadius: 3, yRadius: 3)
+      band.fill(); band.lineWidth = 1.2; band.stroke()
+    }
+
+    // arm out to what it holds
     let arm = NSBezierPath()
     arm.move(to: NSPoint(x: 74, y: 36)); arm.curve(to: NSPoint(x: 96, y: 48), controlPoint1: NSPoint(x: 86, y: 34), controlPoint2: NSPoint(x: 92, y: 40))
-    NSColor.white.setStroke(); arm.lineWidth = 9; arm.lineCapStyle = .round; arm.stroke()
-    claudeOrange.setFill(); NSBezierPath(ovalIn: NSRect(x: 92, y: 45, width: 9, height: 9)).fill()
+    (robot ? steelDark : skin.id == "barista" ? NSColor(srgbRed: 0.2, green: 0.2, blue: 0.22, alpha: 1) : NSColor.white).setStroke()
+    arm.lineWidth = 9; arm.lineCapStyle = .round; arm.stroke()
+    (robot ? steel : claudeOrange).setFill(); NSBezierPath(ovalIn: NSRect(x: 92, y: 45, width: 9, height: 9)).fill()
 
-    // plate, dish, steam
-    let plate = NSRect(x: 82, y: 50, width: 48, height: 9)
-    NSColor(white: 0.93, alpha: 1).setFill(); NSBezierPath(ovalIn: plate).fill()
-    line.setStroke(); NSBezierPath(ovalIn: plate).stroke()
-    if lid > 0.05 {
-      NSAttributedString(string: dish, attributes: [.font: NSFont.systemFont(ofSize: 24)]).draw(at: NSPoint(x: 92, y: 53))
-      for i in 0..<3 {
-        let x = 96 + CGFloat(i) * 9
-        let steam = NSBezierPath()
-        steam.move(to: NSPoint(x: x, y: 82))
-        for k in 1...4 {
-          let y = 82 + CGFloat(k) * 6
-          steam.line(to: NSPoint(x: x + sin(phase * 0.8 + CGFloat(k) + CGFloat(i)) * 3, y: y))
-        }
-        (isBurnt ? NSColor(white: 0.35, alpha: 0.85 * lid) : NSColor.white.withAlphaComponent(0.7 * lid)).setStroke()
-        steam.lineWidth = isBurnt ? 3.5 : 2; steam.lineCapStyle = .round; steam.stroke()
-      }
-      if isBurnt { NSAttributedString(string: "🔥", attributes: [.font: NSFont.systemFont(ofSize: 13)]).draw(at: NSPoint(x: 116, y: 52)) }
+    // what it holds: the chef's cloche-covered plate; the others show the dish and
+    // lift it when it is served
+    let holder = NSRect(x: 82, y: 50, width: 48, height: 9)
+    switch skin.id {
+    case "sushi":
+      NSColor(srgbRed: 0.62, green: 0.42, blue: 0.24, alpha: 1).setFill()
+      NSBezierPath(roundedRect: NSRect(x: 80, y: 50, width: 52, height: 7), xRadius: 2, yRadius: 2).fill()
+      NSColor(srgbRed: 0.5, green: 0.33, blue: 0.18, alpha: 1).setFill()
+      for x: CGFloat in [86, 120] { NSBezierPath(rect: NSRect(x: x, y: 45, width: 6, height: 6)).fill() }
+    case "robot":
+      steel.setFill(); NSBezierPath(roundedRect: NSRect(x: 80, y: 50, width: 52, height: 6), xRadius: 2, yRadius: 2).fill()
+      NSColor(srgbRed: 0.35, green: 0.85, blue: 1, alpha: 0.25 + 0.35 * lid).setFill()
+      NSBezierPath(ovalIn: NSRect(x: 88, y: 56, width: 36, height: 30)).fill()
+    case "barista":
+      NSColor(white: 0.93, alpha: 1).setFill(); NSBezierPath(ovalIn: NSRect(x: 86, y: 50, width: 40, height: 8)).fill()
+    default:
+      NSColor(white: 0.93, alpha: 1).setFill(); NSBezierPath(ovalIn: holder).fill()
+      line.setStroke(); NSBezierPath(ovalIn: holder).stroke()
     }
-    // the cloche, hinged at the plate's right edge
-    NSGraphicsContext.current?.saveGraphicsState()
-    let pivot = NSPoint(x: 128, y: 55)
-    let t = NSAffineTransform()
-    t.translateX(by: pivot.x, yBy: pivot.y + lid * 6)
-    t.rotate(byRadians: -lid * 0.75 + rattle)
-    t.translateX(by: -pivot.x, yBy: -pivot.y)
-    t.concat()
-    let dome = NSBezierPath()
-    dome.move(to: NSPoint(x: 84, y: 55))
-    dome.curve(to: NSPoint(x: 128, y: 55), controlPoint1: NSPoint(x: 84, y: 86), controlPoint2: NSPoint(x: 128, y: 86))
-    dome.close()
-    NSGradient(starting: NSColor(white: 0.97, alpha: 1), ending: NSColor(white: 0.62, alpha: 1))?.draw(in: dome, angle: -60)
-    NSColor(white: 0.5, alpha: 1).setStroke(); dome.lineWidth = 1.2; dome.stroke()
-    NSColor.white.withAlphaComponent(0.8).setStroke()
-    let shine = NSBezierPath(); shine.move(to: NSPoint(x: 92, y: 64)); shine.curve(to: NSPoint(x: 100, y: 76), controlPoint1: NSPoint(x: 92, y: 70), controlPoint2: NSPoint(x: 95, y: 74))
-    shine.lineWidth = 2.5; shine.lineCapStyle = .round; shine.stroke()
-    NSColor(white: 0.55, alpha: 1).setFill(); NSBezierPath(ovalIn: NSRect(x: 102, y: 77, width: 8, height: 7)).fill()
-    NSGraphicsContext.current?.restoreGraphicsState()
+    let open = skin.id == "chef" ? lid : 1
+    if open > 0.05 {
+      let rise: CGFloat = skin.id == "chef" ? 0 : lid * 6 + (rattle != 0 ? abs(rattle) * 20 : 0)
+      NSAttributedString(string: dish, attributes: [.font: NSFont.systemFont(ofSize: 24)]).draw(at: NSPoint(x: 92, y: 53 + rise))
+      let steamy = skin.id == "chef" ? lid : lid
+      if steamy > 0.05 || isBurnt {
+        for i in 0..<3 {
+          let x = 96 + CGFloat(i) * 9
+          let steam = NSBezierPath()
+          steam.move(to: NSPoint(x: x, y: 82 + rise))
+          for k in 1...4 {
+            let y = 82 + rise + CGFloat(k) * 6
+            steam.line(to: NSPoint(x: x + sin(phase * 0.8 + CGFloat(k) + CGFloat(i)) * 3, y: y))
+          }
+          let a = max(steamy, isBurnt ? 0.6 : 0)
+          (isBurnt ? NSColor(white: 0.35, alpha: 0.85 * a) : NSColor.white.withAlphaComponent(0.7 * a)).setStroke()
+          steam.lineWidth = isBurnt ? 3.5 : 2; steam.lineCapStyle = .round; steam.stroke()
+        }
+      }
+      if isBurnt { NSAttributedString(string: robot ? "⚠️" : "🔥", attributes: [.font: NSFont.systemFont(ofSize: 13)]).draw(at: NSPoint(x: 116, y: 52)) }
+    }
+    if skin.id == "chef" {
+      // the cloche, hinged at the plate's right edge
+      NSGraphicsContext.current?.saveGraphicsState()
+      let pivot = NSPoint(x: 128, y: 55)
+      let t = NSAffineTransform()
+      t.translateX(by: pivot.x, yBy: pivot.y + lid * 6)
+      t.rotate(byRadians: -lid * 0.75 + rattle)
+      t.translateX(by: -pivot.x, yBy: -pivot.y)
+      t.concat()
+      let dome = NSBezierPath()
+      dome.move(to: NSPoint(x: 84, y: 55))
+      dome.curve(to: NSPoint(x: 128, y: 55), controlPoint1: NSPoint(x: 84, y: 86), controlPoint2: NSPoint(x: 128, y: 86))
+      dome.close()
+      NSGradient(starting: NSColor(white: 0.97, alpha: 1), ending: NSColor(white: 0.62, alpha: 1))?.draw(in: dome, angle: -60)
+      NSColor(white: 0.5, alpha: 1).setStroke(); dome.lineWidth = 1.2; dome.stroke()
+      NSColor.white.withAlphaComponent(0.8).setStroke()
+      let shine = NSBezierPath(); shine.move(to: NSPoint(x: 92, y: 64)); shine.curve(to: NSPoint(x: 100, y: 76), controlPoint1: NSPoint(x: 92, y: 70), controlPoint2: NSPoint(x: 95, y: 74))
+      shine.lineWidth = 2.5; shine.lineCapStyle = .round; shine.stroke()
+      NSColor(white: 0.55, alpha: 1).setFill(); NSBezierPath(ovalIn: NSRect(x: 102, y: 77, width: 8, height: 7)).fill()
+      NSGraphicsContext.current?.restoreGraphicsState()
+    }
 
     NSGraphicsContext.current?.restoreGraphicsState()
     if isSleepy {
@@ -526,9 +684,9 @@ final class Row: NSView {
     let head: String
     switch entry.kind {
     case "needs": head = "✋  \(name) needs you"
-    case "burnt": head = "🔥  \(name) got burnt"
+    case "burnt": head = "\(skin.id == "robot" ? "⚠️" : "🔥")  \(name) \(skin.burnt)"
     case "session": head = "\(dish(for: entry))  \(name)  ·  \(entry.bill ?? "")"
-    default: head = "\(dish(for: entry))  \(name) is cooked!"
+    default: head = "\(dish(for: entry))  \(name) \(skin.done)"
     }
     let top = bounds.height
     let para = NSMutableParagraphStyle()
@@ -642,7 +800,7 @@ final class SessionRow: NSView {
     pillText.draw(at: NSPoint(x: pillRect.minX + 7, y: pillRect.minY + 2))
 
     let name = session.title
-    NSAttributedString(string: "\(session.state == "needs" ? "✋" : session.dish ?? "🍽")  \(name)", attributes: [
+    NSAttributedString(string: "\(session.state == "needs" ? "✋" : dish(title: session.title, own: session.dish))  \(name)", attributes: [
       .font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color(hex: session.color), .paragraphStyle: clip,
     ]).draw(in: NSRect(x: 10, y: bounds.height - 23, width: pillRect.minX - 16, height: 18))
     let fallback: String
@@ -800,6 +958,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   func poll() {
     settings = loadSettings()
+    // A new skin: redraw the chef, the bubble and the menu bar icon in it.
+    if useSkin(settings.skin) {
+      status?.button?.image = skinIcon()
+      mascot.dish = entries.last.map { $0.kind == "needs" ? "✋" : dish(for: $0) } ?? skin.dishes[0]
+      kitchenDrawn = ""
+      layout()
+    }
     sessions = loadSessions()
     var next = loadOrders()
     let isNew = { (e: Entry) in !self.seen.contains(self.key(e)) }
@@ -872,7 +1037,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     if status == nil {
       status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
       menu.delegate = self
-      status?.button?.image = chefIcon()
+      status?.button?.image = skinIcon()
       status?.button?.imagePosition = .imageLeft
       status?.button?.target = self
       status?.button?.action = #selector(statusClicked)
@@ -910,7 +1075,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let names = ["cooking": "🍳 cooking", "needs": "✋ needs you", "ready": "✓ ready", "idle": "· idle"]
     for (i, s) in sessions.enumerated() {
       let mins = max(0, Int((now - s.since / 1000) / 60))
-      let item = NSMenuItem(title: "\(s.dish ?? "🍽") \(s.title)  —  \(names[s.state] ?? s.state) \(mins)m", action: #selector(jumpTo(_:)), keyEquivalent: i < 9 ? String(i + 1) : "")
+      let item = NSMenuItem(title: "\(dish(title: s.title, own: s.dish)) \(s.title)  —  \(names[s.state] ?? s.state) \(mins)m", action: #selector(jumpTo(_:)), keyEquivalent: i < 9 ? String(i + 1) : "")
       item.target = self
       item.representedObject = s.key
       if let a = s.activity, !a.isEmpty { item.toolTip = a }
@@ -974,7 +1139,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
       let waiting = entries.filter { $0.kind == "needs" }.count
       let header = waiting == entries.count
         ? (waiting == 1 ? "✋ A session needs you" : "✋ \(waiting) sessions need you")
-        : entries.count == 1 ? "🔔 Order up!" : "🔔 Order up! ×\(entries.count)\(waiting > 0 ? " · ✋\(waiting)" : "")"
+        : entries.count == 1 ? skin.header : "\(skin.header) ×\(entries.count)\(waiting > 0 ? " · ✋\(waiting)" : "")"
       let rows: [NSView] = entries.reversed().map { e in
         let row = Row(entry: e, width: inner)
         row.onClick = { [weak self] in self?.open($0) }
@@ -993,7 +1158,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     if needs > 0 { counts.append("\(needs) needs you") }
     if cooking > 0 { counts.append("\(cooking) cooking") }
     if ready > 0 { counts.append("\(ready) ready") }
-    let header = "👨‍🍳 Kitchen" + (counts.isEmpty ? "" : " · " + counts.joined(separator: " · "))
+    let header = skin.kitchen + (counts.isEmpty ? "" : " · " + counts.joined(separator: " · "))
     var views: [NSView] = []
     if sessions.isEmpty {
       views.append(note("Kitchen's quiet", "Start Claude Code in any tab and I'll keep an eye on it.", width: inner))
@@ -1008,7 +1173,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     if !resting.isEmpty {
       // "💤 Resting" then chips, wrapping onto more lines as needed.
       let strip = NSView(frame: NSRect(x: 0, y: 0, width: inner, height: 0))
-      let label = NSAttributedString(string: "💤 Resting", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(0.45)])
+      let label = NSAttributedString(string: skin.resting, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(0.45)])
       var placed: [(NSView, CGFloat, CGFloat)] = []
       var x: CGFloat = 10 + label.size().width + 8, line: CGFloat = 0
       // One chip per project: its tabs counted, a click going to the most recent.
@@ -1123,6 +1288,35 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     panel.orderFrontRegardless()
   }
+}
+
+// `OrderUp --render-skins out.png`: draws every character, dish served, side by side
+// on a transparent background (for the README), and exits.
+if let i = CommandLine.arguments.firstIndex(of: "--render-skins"), i + 1 < CommandLine.arguments.count {
+  let ids = ["chef", "barista", "sushi", "robot"]
+  let cell = NSSize(width: 150, height: 150)
+  let sheet = NSImage(size: NSSize(width: cell.width * CGFloat(ids.count), height: cell.height + 24))
+  for (n, id) in ids.enumerated() {
+    _ = useSkin(id)
+    let view = Chef(frame: NSRect(x: 0, y: 0, width: 136, height: 124))
+    view.dish = skin.dishes[1]
+    view.popUntil = Date().addingTimeInterval(60)
+    for _ in 0..<40 { view.step() }
+    view.hopUntil = .distantPast
+    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+    view.cacheDisplay(in: view.bounds, to: rep)
+    let one = NSImage(size: view.bounds.size)
+    one.addRepresentation(rep)
+    sheet.lockFocus()
+    one.draw(at: NSPoint(x: CGFloat(n) * cell.width + 7, y: 24), from: .zero, operation: .sourceOver, fraction: 1)
+    let label = NSAttributedString(string: id == "sushi" ? "sushi chef" : id, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor(white: 0.55, alpha: 1)])
+    label.draw(at: NSPoint(x: CGFloat(n) * cell.width + (cell.width - label.size().width) / 2, y: 2))
+    sheet.unlockFocus()
+  }
+  if let tiff = sheet.tiffRepresentation, let bmp = NSBitmapImageRep(data: tiff), let png = bmp.representation(using: .png, properties: [:]) {
+    try? png.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+  }
+  exit(0)
 }
 
 let app = NSApplication.shared

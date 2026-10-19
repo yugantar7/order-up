@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-10-19
+
+### Added
+- **Skins.** Pick who serves your orders: the chef, a barista (☕ "Coffee's up!", "is brewed!"), a sushi chef (🍣 "Irasshaimase!", "is plated!") or a robot (🤖 "Task complete", "hit an error"). Each has its own character, words, dishes and menu bar icon. Chosen in setup, `/order-up set skin …`, or `/config`.
+- `OrderUp --render-skins out.png` draws every character side by side.
+
+### Changed
+- A project's dish now comes from the skin's menu (a barista serves ☕ and 🧁); your own dish in settings.json still wins.
+
 ## 0.3.3 — 2026-10-19
 
 ### Added

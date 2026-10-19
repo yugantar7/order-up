@@ -1,6 +1,6 @@
 {
   "name": "order-up",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "A tiny chef pops up on your Mac when a Claude Code session finishes (or needs you) in a tab you're not looking at. Click to jump there.",
   "author": {
     "name": "order-up contributors"
@@ -13,6 +13,18 @@
     "terminal"
   ],
   "userConfig": {
+    "skin": {
+      "type": "string",
+      "title": "Character",
+      "description": "Who serves your orders: the chef, a barista, a sushi chef or a robot",
+      "default": "chef",
+      "options": [
+        "chef",
+        "barista",
+        "sushi",
+        "robot"
+      ]
+    },
     "after": {
       "type": "string",
       "title": "Pop up after",

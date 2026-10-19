@@ -20,6 +20,12 @@ Built for people who run several Claude Code sessions at once and lose track of 
 - **Menu bar chef:** a tiny chef in your menu bar, with the number of orders waiting (or `✋` when a session needs you, `2🍳` while sessions cook). Click it to call the chef out any time: it shows the orders, or, with none waiting, the **kitchen**: every Claude session, what it's doing and for how long; click one to jump there. Click the icon again (or ✕) to send the chef back; right-click for the menu.
 - **With no Claude running:** by default the menu bar chef leaves when your last session ends and comes back with the next one. Answer "Always" in setup and it stays in the menu bar and starts at login ("Nothing cooking" until a session starts).
 
+## Pick your character
+
+<p align="center"><img src="docs/skins.png" width="640" alt="The four order-up characters: the chef with a cloche, a barista with a cup, a sushi chef with a bento box, and a robot with a floppy disk"></p>
+
+Four skins, each with its own words and dishes: the **chef** ("Order up!", "is cooked!"), a **barista** ("Coffee's up!", "is brewed!"), a **sushi chef** ("Irasshaimase!", "is plated!") and a **robot** ("Task complete", "hit an error"). Pick one in setup, or any time with `/order-up set skin barista`.
+
 ## A closer look
 
 <table>
@@ -54,7 +60,7 @@ Or inside Claude Code: `/plugin install order-up --marketplace yugantar7/order-u
 /order-up setup
 ```
 
-Setup checks your Mac, asks a few quick questions (when to pop up, what each order says, needs-you on/off, corner, sound, menu bar, and whether the menu bar chef stays when no Claude session runs), builds the chef app and serves a test order. Run it again any time to change your answers.
+Setup checks your Mac, asks a few quick questions (your character, when to pop up, what each order says, needs-you on/off, corner, sound, menu bar, and whether the menu bar chef stays when no Claude session runs), builds the chef app and serves a test order. Run it again any time to change your answers.
 
 ## Updating
 
@@ -93,6 +99,7 @@ Set them on the install screen, with `/order-up setup` or `/order-up set`, or in
 
 | Name | Values | What it does |
 |---|---|---|
+| `skin` | **chef** · barista · sushi · robot | who serves your orders |
 | `after` | every turn · **30s** · 1 min · 2 min · 5 min | how long a turn must run before it becomes an order |
 | `summary` | **your prompt** · haiku summary · nothing | what each order says (a Haiku summary costs about $0.001 a turn, billed to your Claude account) |
 | `needsYou` | **on** · off | also pop up when a session asks you something or wants a permission |
