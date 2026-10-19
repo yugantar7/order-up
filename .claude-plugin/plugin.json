@@ -1,0 +1,76 @@
+{
+  "name": "order-up",
+  "version": "0.1.0",
+  "description": "A tiny chef pops up on your Mac when a Claude Code session finishes (or needs you) in a tab you're not looking at. Click to jump there.",
+  "author": {
+    "name": "order-up contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "notifications",
+    "macos",
+    "mascot",
+    "terminal"
+  ],
+  "userConfig": {
+    "after": {
+      "type": "string",
+      "title": "Pop up after",
+      "description": "How long a turn must run before a finished one becomes an order",
+      "default": "30s",
+      "options": [
+        "every turn",
+        "30s",
+        "1 min",
+        "2 min",
+        "5 min"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "title": "Order says",
+      "description": "What each order says under the project: your prompt shortened (free), a Haiku summary (~$0.001 a turn), or nothing",
+      "default": "your prompt",
+      "options": [
+        "your prompt",
+        "haiku summary",
+        "nothing"
+      ]
+    },
+    "needsYou": {
+      "type": "boolean",
+      "title": "Needs you",
+      "description": "Also pop up when a session asks you something or wants a permission",
+      "default": true
+    },
+    "corner": {
+      "type": "string",
+      "title": "Corner",
+      "description": "Where on the screen the chef stands",
+      "default": "bottom right",
+      "options": [
+        "bottom right",
+        "bottom left",
+        "top right"
+      ]
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "Sound",
+      "description": "Ring a bell when an order is up",
+      "default": true
+    },
+    "menubar": {
+      "type": "boolean",
+      "title": "Menu bar chef",
+      "description": "A tiny chef in the menu bar: click it to call the chef out and see every session",
+      "default": true
+    },
+    "alwaysOn": {
+      "type": "boolean",
+      "title": "Menu bar chef when Claude is not running",
+      "description": "Keep the menu bar chef even with no Claude session running, and start it at login",
+      "default": false
+    }
+  }
+}

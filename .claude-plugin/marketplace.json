@@ -1,0 +1,6 @@
+{
+  "name": "order-up",
+  "owner": { "name": "order-up contributors" },
+  "description": "The order-up chef for Claude Code",
+  "plugins": [{ "name": "order-up", "source": "./" }]
+}
