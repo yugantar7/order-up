@@ -1,6 +1,8 @@
 # 🍳 order-up
 
-**A tiny chef for Claude Code.** When a session finishes, or needs you, in a terminal tab you're not looking at, a chef pops up in the corner of your Mac with the order. Click it and you're back in that exact tab.
+**A Claude Code mod that tells you when a session is done.** When a Claude Code session finishes, or needs you, in a terminal tab you're not looking at, a tiny chef pops up in the corner of your Mac with the order. Answer it right there, snooze it, or click it and you're back in that exact tab.
+
+🌐 [yugantar7.github.io/order-up](https://yugantar7.github.io/order-up/)
 
 <p align="center"><img src="docs/orders.png" width="420" alt="The order-up chef with four orders: a session that needs you, a burnt dish and two cooked ones, each with its bill"></p>
 
@@ -26,6 +28,16 @@ Built for people who run several Claude Code sessions at once and lose track of 
 <td align="center" valign="top"><img src="docs/kitchen.png" width="300" alt="The kitchen: a session that needs you, two cooking, one ready, and resting sessions as chips"><br><sub><b>The kitchen</b>: click the menu bar chef to see every session</sub></td>
 </tr>
 </table>
+
+## FAQ
+
+**How do I get notified when Claude Code finishes?** Install order-up: when a Claude Code turn that ran for a while finishes in a tab you're not looking at, the chef pops up with the result. Click it to jump back.
+
+**What is a Claude Code mod?** A mod changes Claude Code itself (how it looks, behaves, or what it can do). Mods are plugins with hooks; order-up is one.
+
+**Can I answer Claude Code's questions without switching tabs?** Yes, for questions with choices: they show as buttons on the chef. Permission prompts still need the tab.
+
+**How do I keep track of many Claude Code sessions?** Click the menu bar chef to see the kitchen: every session, its state and what it's doing.
 
 ## Install
 

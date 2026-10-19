@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>order-up: a Claude Code mod that tells you when a session is done</title>
+<meta name="description" content="order-up is a free, open-source Claude Code mod for macOS. A tiny chef pops up when a Claude Code session finishes or needs you, lets you answer its questions without switching tabs, and jumps you back to the right terminal tab.">
+<meta name="keywords" content="Claude Code mod, Claude Code mods, Claude Code plugin, Claude Code notification, notify when Claude Code finishes, Claude Code macOS, Claude Code menu bar, multiple Claude Code sessions">
+<link rel="canonical" href="https://yugantar7.github.io/order-up/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="order-up">
+<meta property="og:title" content="order-up: a Claude Code mod that tells you when a session is done">
+<meta property="og:description" content="A tiny chef pops up on your Mac when a Claude Code session finishes or needs you. Answer from the chef, snooze, or click to jump back to that tab.">
+<meta property="og:url" content="https://yugantar7.github.io/order-up/">
+<meta property="og:image" content="https://yugantar7.github.io/order-up/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="order-up: a Claude Code mod that tells you when a session is done">
+<meta name="twitter:description" content="A tiny chef pops up on your Mac when a Claude Code session finishes or needs you.">
+<meta name="twitter:image" content="https://yugantar7.github.io/order-up/social-preview.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "order-up",
+  "description": "A Claude Code mod for macOS: a tiny chef pops up when a Claude Code session finishes or needs you, lets you answer its questions without switching tabs, and jumps you back to the right terminal tab.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://opensource.org/licenses/MIT",
+  "url": "https://yugantar7.github.io/order-up/",
+  "downloadUrl": "https://github.com/yugantar7/order-up",
+  "codeRepository": "https://github.com/yugantar7/order-up",
+  "image": "https://yugantar7.github.io/order-up/social-preview.png"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "How do I get notified when Claude Code finishes?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Install the order-up mod. When a Claude Code turn that ran for a while (30 seconds by default) finishes in a terminal tab you are not looking at, a chef pops up on your Mac with the result; click it to jump back to that tab." } },
+    { "@type": "Question", "name": "What is a Claude Code mod?",
+      "acceptedAnswer": { "@type": "Answer", "text": "A mod changes Claude Code itself: how it looks, how it behaves, or what it can do. Mods are plugins with hooks; order-up is one, installed with two commands." } },
+    { "@type": "Question", "name": "Can I answer Claude Code's questions without switching tabs?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. When a session asks a question with choices, order-up shows them as buttons on the chef; click one and the session gets your answer. Permission prompts still need the tab." } },
+    { "@type": "Question", "name": "How do I keep track of many Claude Code sessions at once?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Click order-up's menu bar chef to see the kitchen: every Claude Code session, whether it is cooking, needs you, is ready or resting, and what it is doing. Click one to jump to it." } },
+    { "@type": "Question", "name": "Does order-up work on Windows or Linux?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No, it is macOS only: the chef is a native Mac window. It works with Terminal.app, iTerm2, Ghostty, Warp, VS Code, Cursor and the Claude desktop app." } }
+  ]
+}
+</script>
+<style>
+  :root { --bg: #141212; --card: #1c1a1a; --ink: #f2eeea; --soft: #b9b2ab; --dim: #8a837d; --accent: #d97857; --line: #2c2826; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 56px 20px 80px; }
+  header { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: center; }
+  h1 { font-size: 52px; line-height: 1.05; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h1 span { display: block; font-size: 26px; color: var(--accent); font-weight: 600; letter-spacing: 0; margin-top: 10px; }
+  p.lead { color: var(--soft); font-size: 19px; margin: 18px 0 26px; }
+  .cta { display: inline-block; background: var(--accent); color: #fff; padding: 11px 20px; border-radius: 10px; text-decoration: none; font-weight: 600; margin-right: 10px; }
+  .cta.alt { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+  header img { width: 100%; height: auto; border-radius: 14px; }
+  h2 { font-size: 28px; margin: 64px 0 16px; letter-spacing: -0.01em; }
+  ul.features { list-style: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px; }
+  ul.features li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; color: var(--soft); }
+  ul.features b { color: var(--ink); display: block; margin-bottom: 4px; }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  .shots figure { margin: 0; }
+  .shots img { width: 100%; height: auto; border-radius: 12px; }
+  figcaption { color: var(--dim); font-size: 14px; margin-top: 8px; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; overflow-x: auto; font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--soft); margin: 10px 0 0; }
+  a { color: var(--accent); }
+  footer { margin-top: 64px; color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; }
+  @media (max-width: 760px) {
+    header, .shots, ul.features { grid-template-columns: 1fr; }
+    h1 { font-size: 40px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>order-up <span>a Claude Code mod that tells you when a session is done</span></h1>
+      <p class="lead">Running several Claude Code sessions at once? When one finishes, or needs you, in a terminal tab you're not looking at, a tiny chef pops up on your Mac with the order. Answer it right there, snooze it, or click to jump back to that exact tab.</p>
+      <a class="cta" href="#install">Install in two commands</a>
+      <a class="cta alt" href="https://github.com/yugantar7/order-up">View on GitHub</a>
+    </div>
+    <img src="orders.png" width="645" height="790" alt="The order-up chef with four Claude Code orders: a session that needs you, a burnt dish and two cooked ones, each with its bill">
+  </header>
+
+  <h2>What it does</h2>
+  <ul class="features">
+    <li><b>Order up</b>A Claude Code turn finishes in a tab you're not watching: the chef rings a bell and shows what got done.</li>
+    <li><b>Answer from the chef</b>A session asks you a question with choices: click an answer on the chef, no tab switching.</li>
+    <li><b>Burnt dish</b>The turn failed or its last command broke: the dish comes out burnt, so you know at a glance.</li>
+    <li><b>The bill</b>Each order shows time taken, cost, files changed and commands run.</li>
+    <li><b>The kitchen</b>Click the menu bar chef to see every Claude Code session: cooking, needs you, ready or resting.</li>
+    <li><b>Snooze</b>Not now? Snooze an order for 10 minutes and the chef brings it back.</li>
+  </ul>
+
+  <h2>A closer look</h2>
+  <div class="shots">
+    <figure><img src="answer.png" width="644" height="930" alt="Claude Code questions answered from the chef: short answers as pills, long answers as full-width buttons" loading="lazy"><figcaption>Answer Claude Code's questions from the chef. Past four orders, the list scrolls.</figcaption></figure>
+    <figure><img src="kitchen.png" width="650" height="840" alt="The kitchen: every Claude Code session with its state and what it is doing" loading="lazy"><figcaption>The kitchen: every Claude Code session at a glance.</figcaption></figure>
+  </div>
+
+  <h2 id="install">Install</h2>
+  <p>Needs macOS and Apple's Command Line Tools (<code>xcode-select --install</code>). In a terminal:</p>
+  <pre>claude plugin marketplace add yugantar7/order-up
+claude plugin install order-up@order-up</pre>
+  <p>Then start a new Claude Code session and run <code>/order-up setup</code>. It asks a few questions, builds the chef and serves a test order. Works with Terminal.app and iTerm2 (jumps to the exact tab), and Ghostty, Warp, VS Code, Cursor and the Claude desktop app (brings the window forward).</p>
+
+  <h2>Questions</h2>
+  <details><summary>How do I get notified when Claude Code finishes?</summary><p>Install order-up. When a Claude Code turn that ran for a while (30 seconds by default) finishes in a tab you're not looking at, the chef pops up with the result; click it to jump back to that tab.</p></details>
+  <details><summary>What is a Claude Code mod?</summary><p>A mod changes Claude Code itself: how it looks, how it behaves, or what it can do. Mods are plugins with hooks; order-up is one, installed with two commands.</p></details>
+  <details><summary>Can I answer Claude Code's questions without switching tabs?</summary><p>Yes. When a session asks a question with choices, order-up shows them as buttons; click one and the session gets your answer. Permission prompts still need the tab.</p></details>
+  <details><summary>How do I keep track of many Claude Code sessions at once?</summary><p>Click the menu bar chef to see the kitchen: every session, whether it's cooking, needs you, is ready or resting, and what it's doing. Click one to jump to it.</p></details>
+  <details><summary>Does it work on Windows or Linux?</summary><p>No, order-up is macOS only: the chef is a native Mac window.</p></details>
+  <details><summary>Is it free? What does it collect?</summary><p>Free and open source (MIT). It makes no network calls of its own and only reads and writes <code>~/.claude/order-up/</code>.</p></details>
+
+  <footer>order-up is open source under the MIT license · <a href="https://github.com/yugantar7/order-up">github.com/yugantar7/order-up</a> · <a href="https://github.com/yugantar7/order-up/releases">Releases</a> · <a href="https://github.com/yugantar7/order-up/issues">Ideas &amp; issues</a> · Not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
