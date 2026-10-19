@@ -7,7 +7,9 @@
 
 import AppKit
 
-let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/order-up")
+// ORDER_UP_HOME points a second copy elsewhere (screenshots with made-up sessions).
+let home = ProcessInfo.processInfo.environment["ORDER_UP_HOME"].map { URL(fileURLWithPath: $0) }
+  ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/order-up")
 let queueDir = home.appendingPathComponent("queue")
 let sessionsDir = home.appendingPathComponent("sessions")
 let settingsFile = home.appendingPathComponent("settings.json")
@@ -31,6 +33,12 @@ struct Entry: Codable, Equatable {
   let at: Double
   // A test order shows even when its session is the one in front.
   var isTest: Bool? = nil
+  // A question's choices (a "needs" order): buttons that answer it from here.
+  var options: [String]? = nil
+  // Where the answer goes: ~/.claude/order-up/answers/<answerId>.json.
+  var answerId: String? = nil
+  // Put away until then (seconds since 1970); it comes back with a hop.
+  var snoozeUntil: Double? = nil
   var file: String? = nil
 }
 
@@ -357,18 +365,102 @@ final class Chef: NSView {
   }
 }
 
+let SNOOZE_SECONDS: Double = 600
+
+// A small pill button inside an order: an answer, or the snooze.
+final class TinyButton: NSView {
+  let text: NSAttributedString
+  let action: () -> Void
+  let isQuiet: Bool
+  private var hovering = false
+
+  init(_ label: String, quiet: Bool = false, tip: String? = nil, action: @escaping () -> Void) {
+    text = NSAttributedString(string: label, attributes: [
+      .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(quiet ? 0.6 : 0.92),
+    ])
+    self.action = action
+    isQuiet = quiet
+    super.init(frame: NSRect(x: 0, y: 0, width: min(text.size().width + 18, 140), height: 22))
+    toolTip = tip
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  required init?(coder: NSCoder) { nil }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  override func mouseDown(with event: NSEvent) { action() }
+  override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true; NSCursor.pointingHand.set() }
+  override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true; NSCursor.arrow.set() }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 11, yRadius: 11)
+    (isQuiet ? NSColor.white.withAlphaComponent(hovering ? 0.16 : 0.0) : claudeOrange.withAlphaComponent(hovering ? 0.55 : 0.3)).setFill()
+    shape.fill()
+    if !isQuiet {
+      claudeOrange.withAlphaComponent(0.8).setStroke()
+      shape.lineWidth = 1
+      shape.stroke()
+    }
+    let para = NSMutableParagraphStyle()
+    para.lineBreakMode = .byTruncatingTail
+    para.alignment = .center
+    let m = NSMutableAttributedString(attributedString: text)
+    m.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: m.length))
+    m.draw(in: NSRect(x: 6, y: 3, width: bounds.width - 12, height: 16))
+  }
+}
+
 // One finished session: the place in its tint, what got done under it.
 final class Row: NSView {
   let entry: Entry
   var onClick: ((Entry) -> Void)?
   private var hovering = false
 
-  static func height(_ e: Entry) -> CGFloat { e.bill == nil || e.kind == "session" ? 44 : 58 }
+  var onAnswer: ((Entry, String) -> Void)?
+  var onSnooze: ((Entry) -> Void)?
+
+  static func answers(_ e: Entry) -> [String] {
+    e.kind == "needs" && e.answerId != nil ? Array((e.options ?? []).prefix(4)) : []
+  }
+
+  // The answer buttons laid out in lines that fit the row: [(label, x, line)].
+  static func answerLayout(_ e: Entry, width: CGFloat = 308) -> [(String, CGFloat, Int)] {
+    var out: [(String, CGFloat, Int)] = []
+    var x: CGFloat = 10, line = 0
+    for label in answers(e) {
+      let w = TinyButton(label) {}.frame.width
+      if x + w > width - 14 && x > 10 { x = 10; line += 1 }
+      out.append((label, x, line))
+      x += w + 6
+    }
+    return out
+  }
+
+  static func height(_ e: Entry) -> CGFloat {
+    let lines = (answerLayout(e).map { $0.2 }.max() ?? -1) + 1
+    return (e.bill == nil || e.kind == "session" ? 44 : 58) + CGFloat(lines) * 28 + (lines > 0 ? 4 : 0)
+  }
 
   init(entry: Entry, width: CGFloat) {
     self.entry = entry
     super.init(frame: NSRect(x: 0, y: 0, width: width, height: Row.height(entry)))
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    // The question's choices: answer it from here, without going to the tab.
+    let placed = Row.answerLayout(entry, width: width)
+    let lines = (placed.map { $0.2 }.max() ?? -1) + 1
+    for (label, x, line) in placed {
+      let b = TinyButton(label, tip: "Answer \"\(label)\" without leaving where you are") { [weak self] in
+        guard let self else { return }
+        self.onAnswer?(self.entry, label)
+      }
+      b.frame.origin = NSPoint(x: x, y: 6 + CGFloat(lines - 1 - line) * 28)
+      addSubview(b)
+    }
+    let snooze = TinyButton("⏰", quiet: true, tip: "Snooze 10 minutes") { [weak self] in
+      guard let self else { return }
+      self.onSnooze?(self.entry)
+    }
+    snooze.frame = NSRect(x: width - 56, y: bounds.height - 25, width: 26, height: 22)
+    addSubview(snooze)
   }
   required init?(coder: NSCoder) { nil }
 
@@ -396,14 +488,14 @@ final class Row: NSView {
     para.lineBreakMode = .byTruncatingTail
     NSAttributedString(string: head, attributes: [
       .font: NSFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: color(hex: entry.color), .paragraphStyle: para,
-    ]).draw(in: NSRect(x: 10, y: top - 22, width: bounds.width - 44, height: 18))
+    ]).draw(in: NSRect(x: 10, y: top - 22, width: bounds.width - 70, height: 18))
     NSAttributedString(string: entry.summary ?? (entry.kind == "burnt" ? "The turn ended with an error" : "Finished"), attributes: [
       .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.white.withAlphaComponent(0.72), .paragraphStyle: para,
     ]).draw(in: NSRect(x: 10, y: top - 39, width: bounds.width - 44, height: 16))
     if let bill = entry.bill, entry.kind != "session" {
       NSAttributedString(string: "🧾 \(bill)", attributes: [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: NSColor.white.withAlphaComponent(0.45), .paragraphStyle: para,
-      ]).draw(in: NSRect(x: 10, y: 4, width: bounds.width - 44, height: 14))
+      ]).draw(in: NSRect(x: 10, y: top - 54, width: bounds.width - 44, height: 14))
     }
     let arrow = NSAttributedString(string: "→", attributes: [
       .font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(hovering ? 0.95 : 0.45),
@@ -551,15 +643,15 @@ final class Chip: NSView {
 
 // A quiet line of text in the bubble: the empty states.
 func note(_ title: String, _ body: String, width: CGFloat) -> NSView {
-  let v = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 44))
+  let v = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 58))
   let t = NSTextField(labelWithString: title)
   t.font = .systemFont(ofSize: 13, weight: .semibold)
   t.textColor = NSColor.white.withAlphaComponent(0.85)
-  t.frame = NSRect(x: 10, y: 22, width: width - 20, height: 18)
+  t.frame = NSRect(x: 10, y: 36, width: width - 20, height: 18)
   let b = NSTextField(wrappingLabelWithString: body)
   b.font = .systemFont(ofSize: 11.5)
   b.textColor = NSColor.white.withAlphaComponent(0.55)
-  b.frame = NSRect(x: 10, y: 2, width: width - 20, height: 18)
+  b.frame = NSRect(x: 10, y: 2, width: width - 20, height: 32)
   v.addSubview(t)
   v.addSubview(b)
   return v
@@ -573,6 +665,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   var entries: [Entry] = []
   var sessions: [Session] = []
   var seen = Set<String>()
+  var snoozed: [Entry] = []
   // Called out from the menu bar: the chef stays out (with the kitchen when no
   // order waits) until the icon or ✕ sends it back.
   var isSummoned = false
@@ -656,6 +749,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
       }
     }
     next.removeAll { removedHere.contains(key($0)) }
+    // Snoozed orders wait out of sight; one whose time is up comes back like a new one.
+    let now = Date().timeIntervalSince1970
+    let wasAsleep = Set(snoozed.map { key($0) })
+    snoozed = next.filter { ($0.snoozeUntil ?? 0) > now }
+    next.removeAll { ($0.snoozeUntil ?? 0) > now }
+    for e in next where wasAsleep.contains(key(e)) && fresh == nil { fresh = e.kind ?? "done" }
     if next != entries {
       entries = next
       mascot.oldest = entries.first.map { Date(timeIntervalSince1970: $0.at) }
@@ -671,7 +770,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     updateStatus()
     // Stay while there is an order to show, or a kitchen to keep in the menu bar.
     if isSummoned { layout() }
-    if entries.isEmpty && !isSummoned && !(settings.menubar != false && (settings.stayOpen == true || !sessions.isEmpty)) {
+    if entries.isEmpty && snoozed.isEmpty && !isSummoned && !(settings.menubar != false && (settings.stayOpen == true || !sessions.isEmpty)) {
       log("nothing to show, leaving")
       NSApp.terminate(nil)
     }
@@ -711,7 +810,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     let cooking = sessions.filter { $0.state == "cooking" }.count
     let needs = sessions.filter { $0.state == "needs" }.count
-    let title = !entries.isEmpty ? " \(entries.count)" : needs > 0 ? " ✋\(needs)" : cooking > 0 ? " \(cooking)🍳" : ""
+    let title = !entries.isEmpty ? " \(entries.count)" : needs > 0 ? " ✋\(needs)" : !snoozed.isEmpty ? " 💤\(snoozed.count)" : cooking > 0 ? " \(cooking)🍳" : ""
     if status?.button?.title != title { status?.button?.title = title }
   }
 
@@ -748,6 +847,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     menu.addItem(.separator())
     if !entries.isEmpty {
+      let later = NSMenuItem(title: "Snooze \(entries.count == 1 ? "it" : "all") 10 minutes", action: #selector(snoozeAll), keyEquivalent: "")
+      later.target = self
+      menu.addItem(later)
       let clear = NSMenuItem(title: "Clear \(entries.count) order\(entries.count == 1 ? "" : "s")", action: #selector(clearOrders), keyEquivalent: "")
       clear.target = self
       menu.addItem(clear)
@@ -762,6 +864,32 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     guard let key = item.representedObject as? String, let s = sessions.first(where: { $0.key == key }) else { return }
     jump(tty: s.tty, bundleId: s.bundleId)
   }
+
+  // Answers a waiting question from the chef: the session's mod picks up the file.
+  func answer(_ e: Entry, _ label: String) {
+    guard let id = e.answerId?.filter({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }), !id.isEmpty else { return }
+    let dir = home.appendingPathComponent("answers")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    if let data = try? JSONSerialization.data(withJSONObject: ["answer": label]) {
+      try? data.write(to: dir.appendingPathComponent("\(id).json"))
+    }
+    remove(e, "answered from the chef: \(label)")
+    poll()
+  }
+
+  func snooze(_ list: [Entry]) {
+    let until = Date().timeIntervalSince1970 + SNOOZE_SECONDS
+    for e in list {
+      guard let f = e.file, let data = try? Data(contentsOf: URL(fileURLWithPath: f)),
+            var obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+      obj["snoozeUntil"] = until
+      if let out = try? JSONSerialization.data(withJSONObject: obj) { try? out.write(to: URL(fileURLWithPath: f)) }
+      log("snoozed \(e.title) for \(Int(SNOOZE_SECONDS / 60))m")
+    }
+    poll()
+  }
+
+  @objc func snoozeAll() { snooze(entries) }
 
   @objc func clearOrders() {
     entries.forEach { remove($0, "cleared from the menu bar") }
@@ -779,6 +907,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
       let rows: [NSView] = entries.reversed().map { e in
         let row = Row(entry: e, width: inner)
         row.onClick = { [weak self] in self?.open($0) }
+        row.onAnswer = { [weak self] in self?.answer($0, $1) }
+        row.onSnooze = { [weak self] in self?.snooze([$0]) }
         return row
       }
       return (header, rows)

@@ -2,33 +2,30 @@
 
 **A tiny chef for Claude Code.** When a session finishes, or needs you, in a terminal tab you're not looking at, a chef pops up in the corner of your Mac with the order. Click it and you're back in that exact tab.
 
-```
-╭──────────────────────────────────────────╮
-│ 🔔 Order up! ×3 · ✋1                  ✕ │
-│ ✋  mobile needs you                   → │
-│     asks: Ship the build to TestFlight?   │
-│ 🔥  blog got burnt                     → │
-│     Run the test suite and fix failures   │
-│     🧾 2m05s · $0.11 · 1 file · 4 cmds    │
-│ 🌮  web-app is cooked!                 → │
-│     Add rate limiting to the login route  │
-│     🧾 4m12s · $0.38 · 3 files · 5 cmds   │
-╰──────────────────────────────────────────╯
-                     👨‍🍳 ─ 🍽 (lifts the lid on hover)
-```
+<p align="center"><img src="docs/orders.png" width="420" alt="The order-up chef with four orders: a session that needs you, a burnt dish and two cooked ones, each with its bill"></p>
 
 Built for people who run several Claude Code sessions at once and lose track of which one finished.
 
 ## What it does
 
 - **Order up:** a turn that took a while (30s by default) finishes in a session you're not looking at → the chef hops in, rings a bell and lifts the lid on that project's dish. Each project gets its own dish and color.
-- **Needs you:** a session stops to ask you something or wants a permission → a ✋ order, with the question.
+- **Needs you, and answer from the chef:** a session stops to ask you something or wants a permission → a ✋ order, with the question. When it's a question with choices, the choices are buttons: click one and Claude gets your answer without you switching tabs (permission prompts still need the tab).
 - **Burnt dish:** the turn ended in an error, or its last command failed → the dish comes out burnt 🔥 and the chef frowns.
 - **The bill:** each order shows how long it took, what it cost, how many files it changed and commands it ran.
 - **One chef, one list:** several orders stack in one bubble. Click one to jump to its session; it also leaves by itself once you look at that session; ✕ clears them all.
+- **Snooze:** the ⏰ on an order puts it away for 10 minutes; it comes back with a hop. Right-click the menu bar chef to snooze them all.
 - **Gets impatient:** leave an order waiting and the chef starts rattling the lid, more after five minutes.
 - **Menu bar chef:** a tiny chef in your menu bar, with the number of orders waiting (or `✋` when a session needs you, `2🍳` while sessions cook). Click it to call the chef out any time: it shows the orders, or, with none waiting, the **kitchen**: every Claude session, what it's doing and for how long; click one to jump there. Click the icon again (or ✕) to send the chef back; right-click for the menu.
 - **With no Claude running:** by default the menu bar chef leaves when your last session ends and comes back with the next one. Answer "Always" in setup and it stays in the menu bar and starts at login ("Nothing cooking" until a session starts).
+
+## A closer look
+
+<table>
+<tr>
+<td align="center" valign="top"><img src="docs/answer.png" width="360" alt="A needs-you order with three answer buttons, and a cooked order with its bill; each has a snooze clock"><br><sub><b>Answer from the chef</b>: pick a choice without switching tabs; ⏰ snoozes an order</sub></td>
+<td align="center" valign="top"><img src="docs/kitchen.png" width="300" alt="The kitchen: a session that needs you, two cooking, one ready, and resting sessions as chips"><br><sub><b>The kitchen</b>: click the menu bar chef to see every session</sub></td>
+</tr>
+</table>
 
 ## Install
 

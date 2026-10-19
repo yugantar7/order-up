@@ -208,12 +208,19 @@ async function summaryOf($: EngineInterface, prompt: string, answer: string): Pr
   return r.isAnswered ? short(r.text.split('\n')[0].replace(/^["']|["'.]$/g, ''), 80) : short(prompt, 80)
 }
 
-async function order($: EngineInterface, kind: 'done' | 'burnt' | 'needs', summary?: string, bill?: string, isTest = false): Promise<void> {
+async function order(
+  $: EngineInterface,
+  kind: 'done' | 'burnt' | 'needs',
+  summary?: string,
+  bill?: string,
+  isTest = false,
+  question?: { options: string[]; answerId: string },
+): Promise<void> {
   if (!me) return
   const at = (await $.clock.now()) / 1000
   await $.fs.write(
     `${base}/queue/${me.key}.json`,
-    JSON.stringify({ tty: me.tty, bundleId: me.bundleId, app: me.app, title: me.title, color: me.color, dish: me.dish, summary, bill, kind, at, isTest }),
+    JSON.stringify({ tty: me.tty, bundleId: me.bundleId, app: me.app, title: me.title, color: me.color, dish: me.dish, summary, bill, kind, at, isTest, ...question }),
   )
   await wake($)
 }
@@ -416,15 +423,49 @@ export const register: Register = (on, opts) => {
   })
 
   // A question waiting on you (Claude's, or another mod's) or a permission prompt.
+  // A one-question card with choices can be answered from the chef: the card here
+  // and the chef's buttons race, and the first answer wins.
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    const card = e.questions.length === 1 ? e.questions[0] : undefined
+    const choices = card && !card.multiSelect ? card.options.map(o => o.label).slice(0, 4) : []
+    const answerId = e.tool_use_id.replace(/[^\w-]/g, '')
+    const canAnswer = isOn && settings.needs && choices.length > 0 && answerId !== ''
     if (isOn && settings.needs) {
-      const q = e.questions[0]?.question ?? 'a question'
-      void order($, 'needs', `asks: ${short(q, 70)}`).catch(() => {})
+      const q = card?.question ?? e.questions[0]?.question ?? 'a question'
+      void order($, 'needs', `asks: ${short(q, 70)}`, undefined, false, canAnswer ? { options: choices, answerId } : undefined).catch(() => {})
       void heartbeat($, 'needs').catch(() => {})
     }
-    const answered = await next(e)
+    const dialog = next(e)
+    if (!canAnswer || !card) {
+      const answered = await dialog
+      void heartbeat($, 'cooking').catch(() => {})
+      return answered
+    }
+    // Waits for the chef's answer file in a small shell loop (its time is not this hook's).
+    const file = `${base}/answers/${answerId}.json`
+    const waiter = $.process.spawn({ argv: ['/bin/sh', '-c', 'while [ ! -f "$1" ]; do sleep 0.4; done; cat "$1"; rm -f "$1"', 'sh', file] })
+    const fromChef = (async () => {
+      let out = ''
+      for await (const piece of waiter) if ('text' in piece) out += piece.text
+      return out
+    })().catch(() => new Promise<string>(() => {}))
+    const first = await Promise.race([dialog.then(r => ({ r }), err => ({ err })), fromChef.then(text => ({ text }))])
     void heartbeat($, 'cooking').catch(() => {})
-    return answered
+    if ('text' in first) {
+      let answer = ''
+      try {
+        answer = String((JSON.parse(first.text) as { answer?: unknown }).answer ?? '')
+      } catch {
+        // a torn write: fall through to the card
+      }
+      if (choices.includes(answer)) return { result: { questions: e.questions, answers: { [card.question]: answer } } }
+      return dialog
+    }
+    // Answered here: stop waiting, and take the chef's order back.
+    void waiter.return?.(undefined as never)
+    void sh($, 'grep -q "$2" "$1" 2>/dev/null && rm -f "$1"', [`${base}/queue/${me?.key ?? 'none'}.json`, answerId]).catch(() => {})
+    if ('err' in first) throw first.err
+    return first.r
   })
 
   on('classic.Notification', async ($, e, next) => {

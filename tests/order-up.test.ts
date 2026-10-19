@@ -40,6 +40,8 @@ function world(on: On, w: World = {}) {
       const q = e.questions[0].question
       asked.push(q)
       const pick = w.answers?.[e.questions[0].header] ?? e.questions[0].options[0].label
+      // '__hang__': the card in the tab is never answered.
+      if (pick === '__hang__') return new Promise(() => {})
       return { result: { questions: e.questions, answers: { [q]: pick } } }
     }
     if (e.tool === 'Bash' && (e as { command: string }).command.includes('fail')) return { isError: true as const, result: 'Exit code 1', text: 'Exit code 1' }
@@ -141,4 +143,38 @@ test('settings.json names a project\'s color and dish', { options: { after: 'eve
   await $.turn.complete(turn(1000))
   await w.clock.advance(0)
   expect(w.order()).toMatchObject({ color: '#123456', dish: '🍣' })
+})
+
+const QUESTION = { question: 'Ship the build to TestFlight now?', header: 'Ship', options: [{ label: 'Yes, ship it' }, { label: 'Not yet' }], multiSelect: false }
+
+test('answer from the chef: the order carries the choices, and the chef\'s answer wins the race', async ($, on) => {
+  on('process.spawn', async function* () {
+    yield { stream: 'stdout' as const, text: '{"answer":"Yes, ship it"}' }
+    return { value: { code: 0, signal: null } }
+  })
+  const w = world(on, { answers: { Ship: '__hang__' } })
+  await $.session.start(START)
+  const r = await $.tool.call({ tool: 'AskUserQuestion', questions: [QUESTION] } as never)
+  expect(w.order()).toMatchObject({ kind: 'needs', options: ['Yes, ship it', 'Not yet'] })
+  expect(w.order().answerId).toBeTruthy()
+  expect((r as { result: { answers: Record<string, string> } }).result.answers).toEqual({ 'Ship the build to TestFlight now?': 'Yes, ship it' })
+})
+
+test('answered in the tab first: that answer stands and the chef stops waiting', async ($, on) => {
+  let stopped = false
+  on('process.spawn', async function* () {
+    try {
+      await new Promise(() => {})
+    } finally {
+      stopped = true
+    }
+    return { value: { code: 0, signal: null } }
+  })
+  const w = world(on, { answers: { Ship: 'Not yet' } })
+  await $.session.start(START)
+  const r = await $.tool.call({ tool: 'AskUserQuestion', questions: [QUESTION] } as never)
+  expect((r as { result: { answers: Record<string, string> } }).result.answers).toEqual({ 'Ship the build to TestFlight now?': 'Not yet' })
+  await w.clock.advance(0)
+  expect(w.runs.some(r => (r[2] ?? '').includes('grep -q'))).toBe(true)
+  void stopped
 })

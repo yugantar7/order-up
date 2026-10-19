@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-10-19
+
+### Added
+- **Answer from the chef.** A ✋ order for a question with choices shows them as buttons; click one and the session gets your answer without you switching tabs. Whichever comes first wins: the chef's button or the card in the tab.
+- **Snooze.** ⏰ on an order puts it away for 10 minutes; it comes back with a hop and a bell. The menu bar shows 💤 and a count while orders sleep; right-click → Snooze all.
+- The README now shows the chef.
+
+### Fixed
+- "Kitchen's quiet" and "All caught up" no longer cut their text off.
+
 ## 0.2.0 — 2026-10-19
 
 ### Added
