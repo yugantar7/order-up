@@ -5,6 +5,8 @@
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 app="${1:-$HOME/.claude/order-up/OrderUp.app}"
+# The app carries the mod's version, so an updated mod can tell the app is behind.
+version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$here/../.claude-plugin/plugin.json" | head -1)
 command -v swiftc >/dev/null 2>&1 || { echo "swiftc not found: install Apple's Command Line Tools with: xcode-select --install" >&2; exit 1; }
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
@@ -18,11 +20,12 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>OrderUp</string>
   <key>CFBundleExecutable</key><string>OrderUp</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.3.2</string>
+  <key>CFBundleShortVersionString</key><string>VERSION</string>
   <key>LSUIElement</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>OrderUp brings the terminal tab of a finished Claude Code session to the front when you click its order.</string>
 </dict>
 </plist>
 PLIST
+sed -i '' "s/<string>VERSION<\/string>/<string>${version:-0}<\/string>/" "$app/Contents/Info.plist"
 codesign --force -s - "$app" >/dev/null 2>&1 || true
 echo "built $app"

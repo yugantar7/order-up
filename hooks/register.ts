@@ -225,6 +225,22 @@ async function order(
   await wake($)
 }
 
+// After an update the mod is new but the chef app is the one setup built: rebuild it
+// (in the background), restart it, and say so.
+async function catchUp($: EngineInterface): Promise<void> {
+  const mine = (JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)) as { version?: string }).version
+  const built = (await sh($, 'defaults read "$1/Contents/Info" CFBundleShortVersionString 2>/dev/null', [appPath()])).stdout.trim()
+  if (!mine || built === mine) return
+  const r = await sh($, 'sh "$1/helper/build.sh" "$2"', [$.plugin.root, appPath()], 180000)
+  if (r.exitCode !== 0) {
+    $.ui.toast('🍳 order-up was updated, but its chef app did not rebuild: run /order-up setup.', { timeoutMs: 12000 })
+    return
+  }
+  await sh($, 'pkill -x OrderUp; sleep 0.5')
+  await wake($)
+  $.ui.toast(`🍳 order-up updated to ${mine}. What's new: github.com/yugantar7/order-up/releases`, { timeoutMs: 12000 })
+}
+
 // A login item (a LaunchAgent that opens the app) while stayOpen is on; removed otherwise.
 async function startAtLogin($: EngineInterface, on: boolean): Promise<void> {
   const home = (await $.env.get('HOME')) ?? ''
@@ -352,6 +368,7 @@ export const register: Register = (on, opts) => {
         // The app reads its copy of the options; the login item follows "alwaysOn".
         await writeSettings($)
         await startAtLogin($, settings.stayOpen && settings.menubar)
+        void catchUp($).catch(() => {})
       }
       void finishPending($).catch(() => {})
       // When this session's state began: now, not 1970.

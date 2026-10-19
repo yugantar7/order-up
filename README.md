@@ -56,6 +56,19 @@ Or inside Claude Code: `/plugin install order-up --marketplace yugantar7/order-u
 
 Setup checks your Mac, asks a few quick questions (when to pop up, what each order says, needs-you on/off, corner, sound, menu bar, and whether the menu bar chef stays when no Claude session runs), builds the chef app and serves a test order. Run it again any time to change your answers.
 
+## Updating
+
+Claude Code doesn't update plugins from other people's marketplaces on its own until you say so. Turn it on once: run `/plugin`, open **Marketplaces**, pick **order-up**, choose **Enable auto-update**. New versions then arrive by themselves, and Claude Code tells you "Plugin updated: order-up · Run /reload-plugins to apply" (a new session picks it up too).
+
+Or update by hand:
+
+```sh
+claude plugin marketplace update order-up
+claude plugin update order-up@order-up
+```
+
+The chef app catches up by itself: the first session after an update rebuilds it in the background and shows "🍳 order-up updated to …". What changed is in the [releases](https://github.com/yugantar7/order-up/releases).
+
 ## Terminals
 
 | Where Claude Code runs | Click an order → |

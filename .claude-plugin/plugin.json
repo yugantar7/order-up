@@ -1,6 +1,6 @@
 {
   "name": "order-up",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A tiny chef pops up on your Mac when a Claude Code session finishes (or needs you) in a tab you're not looking at. Click to jump there.",
   "author": {
     "name": "order-up contributors"

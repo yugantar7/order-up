@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3 — 2026-10-19
+
+### Added
+- After order-up updates, the first session rebuilds the chef app in the background, restarts it and says "🍳 order-up updated to …" (before, the app stayed on the version setup built).
+- README: how to turn on auto-update, or update by hand.
+
 ## 0.3.2 — 2026-10-19
 
 ### Fixed
